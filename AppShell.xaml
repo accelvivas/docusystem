@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="docusystem.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:local="clr-namespace:docusystem"
+    xmlns:login="clr-namespace:docusystem.Pages.Login"
+    xmlns:dashboard="clr-namespace:docusystem.Pages.Dashboard"
+    xmlns:notifications="clr-namespace:docusystem.Pages.Notifications"
+    xmlns:approvals="clr-namespace:docusystem.Pages.Approvals"
+    xmlns:revisions="clr-namespace:docusystem.Pages.RevisionHistory"
+    Title="DocuSystem"
+    FlyoutBehavior="Disabled">
+
+    <!-- Compact flyout header – replaces the default oversized header -->
+    <Shell.FlyoutHeader>
+        <Grid BackgroundColor="#003087" Padding="18,14,18,14" HeightRequest="68">
+            <VerticalStackLayout VerticalOptions="Center" Spacing="1">
+                <Label Text="DocuSystem" FontSize="17" FontAttributes="Bold" TextColor="White" />
+                <Label Text="NU Lipa Student Org. Governance" FontSize="10" TextColor="#B0C4E8" />
+            </VerticalStackLayout>
+        </Grid>
+    </Shell.FlyoutHeader>
+
+    <!-- Flyout footer: divider + sign out (MenuItem on Shell is unreliable on some MAUI targets) -->
+    <Shell.FlyoutFooter>
+        <VerticalStackLayout Spacing="0" BackgroundColor="White">
+            <BoxView HeightRequest="1" BackgroundColor="#E0E8F5" />
+            <Button Text="Log out"
+                    FontSize="14"
+                    TextColor="#DC2626"
+                    BackgroundColor="#FEF2F2"
+                    BorderColor="#FECACA"
+                    BorderWidth="1"
+                    CornerRadius="8"
+                    Margin="12,10,12,14"
+                    Padding="12,10"
+                    Clicked="OnLogoutFromFlyoutClicked" />
+        </VerticalStackLayout>
+    </Shell.FlyoutFooter>
+
+    <!-- Login page (entry point) -->
+    <ShellContent
+        x:Name="LoginShellContent"
+        Title="Login"
+        ContentTemplate="{DataTemplate login:LoginPage}"
+        Route="login" />
+
+    <!-- Dashboard -->
+    <ShellContent
+        x:Name="DashboardShellContent"
+        Title="Dashboard"
+        ContentTemplate="{DataTemplate dashboard:DashboardPage}"
+        Route="dashboard" />
+
+    <!-- Notifications: opened from nav-bar bell (upper right), not listed in flyout -->
+    <ShellContent
+        x:Name="NotificationsShellContent"
+        Title="Notifications"
+        FlyoutItemIsVisible="False"
+        ContentTemplate="{DataTemplate notifications:NotificationsPage}"
+        Route="notifications" />
+
+    <!-- Pending Approvals -->
+    <ShellContent
+        x:Name="PendingApprovalsShellContent"
+        Title="Pending Approvals"
+        ContentTemplate="{DataTemplate approvals:PendingApprovalsPage}"
+        Route="pendingapprovals" />
+
+    <!-- Revision History -->
+    <ShellContent
+        x:Name="RevisionHistoryShellContent"
+        Title="Revision History"
+        ContentTemplate="{DataTemplate revisions:RevisionHistoryPage}"
+        Route="revisionhistory" />
+
+</Shell>

@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="docusystem.Pages.Login.LoginPage"
+             BackgroundColor="#F5F7FB"
+             Shell.NavBarIsVisible="False"
+             Title="NU Lipa Login">
+
+    <ScrollView>
+        <Grid Padding="24,36,24,28">
+            <VerticalStackLayout
+                MaximumWidthRequest="420"
+                HorizontalOptions="Center"
+                VerticalOptions="Center"
+                Spacing="24">
+
+                <VerticalStackLayout
+                    Spacing="14"
+                    HorizontalOptions="Center">
+                    <Border
+                        WidthRequest="82"
+                        HeightRequest="82"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 41"
+                        BackgroundColor="#EEF2FA"
+                        HorizontalOptions="Center">
+                        <Image
+                            Source="nu_logo.png"
+                            WidthRequest="48"
+                            HeightRequest="48"
+                            Aspect="AspectFit"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center" />
+                    </Border>
+
+                    <VerticalStackLayout Spacing="6" HorizontalOptions="Center">
+                        <Label
+                            Text="NU Lipa"
+                            FontSize="32"
+                            FontAttributes="Bold"
+                            TextColor="#003087"
+                            HorizontalTextAlignment="Center" />
+                        <Label
+                            Text="Student Organization Management System"
+                            FontSize="13"
+                            TextColor="#5A6E8A"
+                            HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
+                <Border
+                    Style="{StaticResource CardBorder}"
+                    Stroke="#E2E8F3"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 20"
+                    BackgroundColor="White"
+                    Padding="24">
+                    <VerticalStackLayout Spacing="18">
+                        <VerticalStackLayout Spacing="4">
+                            <Label
+                                Text="Welcome"
+                                FontSize="26"
+                                FontAttributes="Bold"
+                                TextColor="#003087" />
+                            <Label
+                                Text="Sign in with your institutional account."
+                                FontSize="14"
+                                TextColor="#5A6E8A" />
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Spacing="14">
+                            <VerticalStackLayout Spacing="6">
+                                <Label
+                                    Text="Email Address"
+                                    Style="{StaticResource FieldLabel}"
+                                    TextColor="#3D5069" />
+                                <Border
+                                    Style="{StaticResource InputBorder}">
+                                    <Entry
+                                        x:Name="EmailEntry"
+                                        Placeholder="you@nu-lipa.edu.ph"
+                                        Keyboard="Email"
+                                        BackgroundColor="Transparent"
+                                        TextColor="#0D1E3D"
+                                        PlaceholderColor="#8FA3BF" />
+                                </Border>
+                                <Label
+                                    x:Name="EmailErrorLabel"
+                                    FontSize="12"
+                                    TextColor="{StaticResource ErrorColor}"
+                                    IsVisible="False" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Label
+                                    Text="Password"
+                                    Style="{StaticResource FieldLabel}"
+                                    TextColor="#3D5069" />
+                                <Border
+                                    Style="{StaticResource InputBorder}"
+                                    Padding="0">
+                                    <Grid ColumnDefinitions="*,64" ColumnSpacing="0" Padding="12,8">
+                                        <Entry
+                                            x:Name="PasswordEntry"
+                                            Grid.Column="0"
+                                            Placeholder="Enter your password"
+                                            IsPassword="True"
+                                            BackgroundColor="Transparent"
+                                            TextColor="#0D1E3D"
+                                            PlaceholderColor="#8FA3BF" />
+
+                                        <Button
+                                            x:Name="ShowPasswordBtnToggle"
+                                            Grid.Column="1"
+                                            Text="Show"
+                                            FontSize="12"
+                                            FontAttributes="Bold"
+                                            TextColor="#5A6E8A"
+                                            BackgroundColor="Transparent"
+                                            Padding="0"
+                                            BorderWidth="0"
+                                            Clicked="OnShowPasswordToggled"
+                                            HorizontalOptions="Center"
+                                            VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                                <Label
+                                    x:Name="PasswordErrorLabel"
+                                    FontSize="12"
+                                    TextColor="{StaticResource ErrorColor}"
+                                    IsVisible="False" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <Button
+                            x:Name="ForgotPasswordBtn"
+                            Text="Forgot Password?"
+                            FontSize="13"
+                            TextColor="#003087"
+                            BackgroundColor="Transparent"
+                            Padding="0"
+                            BorderWidth="0"
+                            Clicked="OnForgotPasswordClicked"
+                            HorizontalOptions="End" />
+
+                        <VerticalStackLayout Spacing="10">
+                            <Button
+                                x:Name="LoginBtn"
+                                Text="Sign In"
+                                BackgroundColor="#003087"
+                                TextColor="White"
+                                Padding="0,14"
+                                Clicked="OnLoginClicked" />
+
+                            <ActivityIndicator
+                                x:Name="LoadingIndicator"
+                                IsRunning="False"
+                                IsVisible="False"
+                                Color="#003087" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label
+                    Text="National University Lipa - A.Y. 2025-2026"
+                    FontSize="12"
+                    TextColor="#98A8BF"
+                    HorizontalTextAlignment="Center"
+                    HorizontalOptions="Center" />
+
+                <Button
+                    x:Name="SignUpBtn"
+                    Text="Create one"
+                    IsVisible="False"
+                    HeightRequest="1"
+                    WidthRequest="1"
+                    Clicked="OnSignUpClicked" />
+            </VerticalStackLayout>
+        </Grid>
+    </ScrollView>
+
+</ContentPage>

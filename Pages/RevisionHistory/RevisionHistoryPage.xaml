@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="docusystem.Pages.RevisionHistory.RevisionHistoryPage"
+             BackgroundColor="{StaticResource White}"
+             Title="Revision history">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="0">
+
+            <!-- Navy Page Header -->
+            <Grid BackgroundColor="#003087" Padding="18,16,18,22">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Revision history"
+                           FontSize="20" FontAttributes="Bold" TextColor="White" />
+                    <Label Text="Edits and returns for the selected proposal."
+                           FontSize="12" TextColor="White" Opacity="0.9" LineBreakMode="WordWrap" />
+                    <Label x:Name="RevisionContextHintLabel"
+                           Text=""
+                           FontSize="11"
+                           TextColor="White"
+                           Opacity="0.88"
+                           LineBreakMode="WordWrap"
+                           Margin="0,4,0,0" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <VerticalStackLayout Padding="16,14,16,20" Spacing="12">
+
+                <Border x:Name="LatestRevisionSummaryBorder"
+                        BackgroundColor="{StaticResource PrimaryLight}"
+                        Stroke="{StaticResource Primary}"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 12"
+                        Padding="12,10">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Latest changes (summary)"
+                               FontSize="13" FontAttributes="Bold"
+                               TextColor="{StaticResource Primary}" />
+                        <Label x:Name="RevisionLatestSummaryLabel"
+                               Text=""
+                               FontSize="12"
+                               TextColor="{StaticResource PrimaryDarkText}"
+                               LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Full change log" Style="{StaticResource SectionTitle}" />
+                        <VerticalStackLayout x:Name="RevisionTimelineStack" Spacing="10" />
+                    </VerticalStackLayout>
+                </Border>
+
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

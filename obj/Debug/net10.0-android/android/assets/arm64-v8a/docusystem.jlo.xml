@@ -1,0 +1,18 @@
+<api>
+  <jcw-types>
+    <type name="MainActivity" package="crc649c60a694cc9c8387" application_java_class="android.app.Application" mono_runtime_initialization="mono.MonoPackageManager.LoadApplication (context);" extends_type="crc6488302ad6e9e4df1a.MauiAppCompatActivity" partial_assembly_qualified_name="docusystem.MainActivity, docusystem">
+      <constructors>
+        <constructor name="MainActivity" method="n_.ctor:()V:" jni_signature="()V" managed_parameters="" retval="void" is_dynamically_registered="True" />
+        <constructor name="MainActivity" method="n_.ctor:(I)V:" jni_signature="(I)V" managed_parameters="System.Int32, System.Private.CoreLib" params="int p0" retval="void" is_dynamically_registered="True" super_call="p0" activate_call="p0" />
+      </constructors>
+      <methods>
+        <method name="onCreate" method="n_onCreate:(Landroid/os/Bundle;)V:GetOnCreate_Landroid_os_Bundle_Handler" jni_signature="(Landroid/os/Bundle;)V" params="android.os.Bundle p0" retval="void" is_dynamically_registered="True" super_call="p0" activate_call="p0" />
+      </methods>
+    </type>
+    <type name="MainApplication" package="crc649c60a694cc9c8387" application_java_class="android.app.Application" mono_runtime_initialization="mono.MonoPackageManager.LoadApplication (context);" extends_type="crc6488302ad6e9e4df1a.MauiApplication" is_application="True" partial_assembly_qualified_name="docusystem.MainApplication, docusystem" application_constructor="MainApplication" />
+  </jcw-types>
+  <acw-types partial-assembly-name="docusystem" module-name="docusystem.dll">
+    <type assembly-qualified-name="docusystem.MainActivity, docusystem, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" compat-jni-name="docusystem.MainActivity" java-key="crc649c60a694cc9c8387.MainActivity" managed-key="docusystem.MainActivity" partial-assembly-qualified-name="docusystem.MainActivity, docusystem" />
+    <type assembly-qualified-name="docusystem.MainApplication, docusystem, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" compat-jni-name="docusystem.MainApplication" java-key="crc649c60a694cc9c8387.MainApplication" managed-key="docusystem.MainApplication" partial-assembly-qualified-name="docusystem.MainApplication, docusystem" />
+  </acw-types>
+</api>

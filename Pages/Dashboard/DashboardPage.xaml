@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="docusystem.Pages.Dashboard.DashboardPage"
+             BackgroundColor="{StaticResource White}"
+             Title="Dashboard">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="0">
+
+            <Grid BackgroundColor="{StaticResource Primary}" Padding="20,22,20,28">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="Dashboard"
+                           FontSize="12"
+                           TextColor="White"
+                           Opacity="0.9"
+                           FontAttributes="Bold" />
+                    <Label x:Name="UserNameLabel" Text=""
+                           FontSize="22" FontAttributes="Bold" TextColor="White" />
+                    <Border BackgroundColor="{StaticResource PrimaryMid}"
+                            Stroke="Transparent"
+                            StrokeShape="RoundRectangle 8"
+                            Padding="10,6"
+                            HorizontalOptions="Start">
+                        <Label x:Name="UserRoleLabel" Text=""
+                               FontSize="12" FontAttributes="Bold"
+                               TextColor="White" />
+                    </Border>
+                    <Label x:Name="ResponsibilityHintLabel"
+                           Text=""
+                           FontSize="12"
+                           TextColor="White"
+                           Opacity="0.9"
+                           LineBreakMode="WordWrap"
+                           Margin="0,4,0,0" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <VerticalStackLayout Padding="16,16,16,22" Spacing="16">
+
+                <!-- What needs attention -->
+                <Border BackgroundColor="{StaticResource PrimaryLight}"
+                        Stroke="{StaticResource Primary}"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 14"
+                        Padding="14,12">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="What needs your attention"
+                               FontSize="14" FontAttributes="Bold"
+                               TextColor="{StaticResource Primary}" />
+                        <Label x:Name="NeedsAttentionLabel"
+                               Text=""
+                               FontSize="12"
+                               TextColor="{StaticResource PrimaryDarkText}"
+                               LineBreakMode="WordWrap" />
+                        <Button Text="Go to Pending Approvals"
+                                BackgroundColor="{StaticResource Primary}"
+                                TextColor="White"
+                                FontAttributes="Bold"
+                                CornerRadius="12"
+                                Padding="14,12"
+                                Clicked="OnGoToPendingApprovalsBrowseClicked" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Text="Summary counts"
+                       FontSize="13" FontAttributes="Bold"
+                       TextColor="{StaticResource Primary}" />
+
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                      ColumnSpacing="10" RowSpacing="10">
+
+                    <Border Grid.Row="0" Grid.Column="0"
+                            BackgroundColor="White"
+                            Stroke="{StaticResource NavyLine}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 14" Padding="12">
+                        <VerticalStackLayout Spacing="6">
+                            <Border BackgroundColor="{StaticResource PrimaryLight}"
+                                    StrokeShape="RoundRectangle 8"
+                                    Stroke="Transparent"
+                                    Padding="6,4"
+                                    HorizontalOptions="Start">
+                                <Label Text="Active in queue" FontSize="10" FontAttributes="Bold"
+                                       TextColor="{StaticResource Primary}" />
+                            </Border>
+                            <Label x:Name="PendingCountLabel" Text="0"
+                                   FontSize="28" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" HorizontalTextAlignment="Center" />
+                            <Label Text="At your stage"
+                                   FontSize="11" TextColor="{StaticResource Primary}"
+                                   Opacity="0.75"
+                                   HorizontalTextAlignment="Center" />
+                            <Button x:Name="ViewPendingBtn" Text="Open list"
+                                    FontSize="12" Padding="0,8"
+                                    BackgroundColor="{StaticResource Primary}"
+                                    TextColor="White"
+                                    CornerRadius="10"
+                                    HorizontalOptions="Fill"
+                                    Clicked="OnOpenPendingNeedsReviewClicked" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Grid.Row="0" Grid.Column="1"
+                            BackgroundColor="White"
+                            Stroke="{StaticResource NavyLine}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 14" Padding="12">
+                        <VerticalStackLayout Spacing="6">
+                            <Border BackgroundColor="{StaticResource PrimaryLight}"
+                                    StrokeShape="RoundRectangle 8"
+                                    Stroke="Transparent"
+                                    Padding="6,4"
+                                    HorizontalOptions="Start">
+                                <Label Text="Returned" FontSize="10" FontAttributes="Bold"
+                                       TextColor="{StaticResource Primary}" />
+                            </Border>
+                            <Label x:Name="ReturnedCountLabel" Text="0"
+                                   FontSize="28" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" HorizontalTextAlignment="Center" />
+                            <Label Text="Needs changes"
+                                   FontSize="11" TextColor="{StaticResource Primary}"
+                                   Opacity="0.75"
+                                   HorizontalTextAlignment="Center" />
+                            <Button x:Name="ViewReturnedBtn" Text="Open list"
+                                    FontSize="12"
+                                    Padding="0,8"
+                                    BackgroundColor="White"
+                                    TextColor="{StaticResource Primary}"
+                                    BorderColor="{StaticResource NavyLine}"
+                                    BorderWidth="2"
+                                    CornerRadius="10"
+                                    HorizontalOptions="Fill"
+                                    Clicked="OnViewReturnedClicked" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Grid.Row="1" Grid.Column="0"
+                            BackgroundColor="White"
+                            Stroke="{StaticResource NavyLine}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 14" Padding="12">
+                        <VerticalStackLayout Spacing="6">
+                            <Border BackgroundColor="{StaticResource PrimaryLight}"
+                                    StrokeShape="RoundRectangle 8"
+                                    Stroke="Transparent"
+                                    Padding="6,4"
+                                    HorizontalOptions="Start">
+                                <Label Text="Waiting on others" FontSize="10" FontAttributes="Bold"
+                                       TextColor="{StaticResource Primary}" />
+                            </Border>
+                            <Label x:Name="WaitingOthersCountLabel" Text="0"
+                                   FontSize="28" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" HorizontalTextAlignment="Center" />
+                            <Label Text="Another reviewer"
+                                   FontSize="11" TextColor="{StaticResource Primary}"
+                                   Opacity="0.75"
+                                   HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Grid.Row="1" Grid.Column="1"
+                            BackgroundColor="White"
+                            Stroke="{StaticResource NavyLine}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 14" Padding="12">
+                        <VerticalStackLayout Spacing="6">
+                            <Border BackgroundColor="{StaticResource PrimaryLight}"
+                                    StrokeShape="RoundRectangle 8"
+                                    Stroke="Transparent"
+                                    Padding="6,4"
+                                    HorizontalOptions="Start">
+                                <Label Text="Fully approved" FontSize="10" FontAttributes="Bold"
+                                       TextColor="{StaticResource Primary}" />
+                            </Border>
+                            <Label x:Name="ApprovedCountLabel" Text="0"
+                                   FontSize="28" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" HorizontalTextAlignment="Center" />
+                            <Label Text="Completed"
+                                   FontSize="11" TextColor="{StaticResource Primary}"
+                                   Opacity="0.75"
+                                   HorizontalTextAlignment="Center" />
+                            <Button x:Name="ViewApprovedBtn" Text="Open list"
+                                    FontSize="12"
+                                    Padding="0,8"
+                                    BackgroundColor="White"
+                                    TextColor="{StaticResource Primary}"
+                                    BorderColor="{StaticResource NavyLine}"
+                                    BorderWidth="2"
+                                    CornerRadius="10"
+                                    HorizontalOptions="Fill"
+                                    Clicked="OnViewApprovedClicked" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                </Grid>
+
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

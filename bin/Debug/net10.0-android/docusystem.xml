@@ -1,0 +1,481 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>docusystem</name>
+    </assembly>
+    <members>
+        <member name="T:docusystem.MainPage">
+            <summary>
+            MainPage - Entry point for NU Lipa Mobile App
+            
+            This is the shell-based root page that provides navigation.
+            The actual login interface is in Pages/Login/LoginPage.
+            </summary>
+        </member>
+        <member name="T:docusystem.Models.ApprovalFlowType">
+            <summary>Which approval chain applies for this proposal.</summary>
+        </member>
+        <member name="F:docusystem.Models.ApprovalFlowType.Academic">
+            <summary>Academic events: Adviser → … → Executive Director.</summary>
+        </member>
+        <member name="F:docusystem.Models.ApprovalFlowType.NonAcademic">
+            <summary>Non-academic: starts at SDAO Assistant (no Adviser / Chair / Dean).</summary>
+        </member>
+        <member name="T:docusystem.Models.Proposal">
+            <summary>
+            Proposal summary/detail — align property names with Laravel API JSON (snake_case typical).
+            </summary>
+        </member>
+        <member name="P:docusystem.Models.Proposal.CanEdit">
+            <summary>Server-computed: whether the current user may edit this proposal.</summary>
+        </member>
+        <member name="P:docusystem.Models.Proposal.CanApprove">
+            <summary>Server-computed: whether the current user may approve at this stage.</summary>
+        </member>
+        <member name="P:docusystem.Models.Proposal.FullyApprovedAt">
+            <summary>Optional — set when status is fully approved (Laravel timestamp).</summary>
+        </member>
+        <member name="P:docusystem.Models.Proposal.LastRemarks">
+            <summary>Latest return-for-revision remarks from the reviewer (align with API field when available).</summary>
+        </member>
+        <member name="P:docusystem.Models.Proposal.ApprovalFlowType">
+            <summary>
+            Whether this proposal follows the Academic or Non-Academic signatory chain (map from API when available).
+            </summary>
+        </member>
+        <member name="T:docusystem.Models.RoleIdCatalog">
+            <summary>
+            Default rows for <c>roles</c> (id, name, display_name) when the API only returns <c>role_id</c> or a role row with <c>id</c> and no <c>name</c> yet.
+            </summary>
+        </member>
+        <member name="M:docusystem.Models.RoleIdCatalog.TryGetDisplayName(System.Int32,System.String@)">
+            <summary>Matches typical <c>roles.id</c> / <c>users.role_id</c> (1…8).</summary>
+        </member>
+        <member name="T:docusystem.Models.Supabase.ProposalRow">
+            <summary>Maps to Postgres table (default <c>proposals</c>). Rename <see cref="T:Supabase.Postgrest.Attributes.TableAttribute"/> if your schema differs.</summary>
+        </member>
+        <member name="T:docusystem.Models.User">
+            <summary>
+            Authenticated user — map fields to your Laravel API resource (e.g. Sanctum user JSON).
+            </summary>
+        </member>
+        <member name="P:docusystem.Models.User.FullName">
+            <summary>Laravel often uses "name" or "full_name" — adjust JsonPropertyName to match your API.</summary>
+        </member>
+        <member name="P:docusystem.Models.User.Name">
+            <summary>Default Eloquent <c>users.name</c> (many APIs omit <c>full_name</c>).</summary>
+        </member>
+        <member name="P:docusystem.Models.User.UserRole">
+            <summary>From API <c>role</c> (object, string slug, or id).</summary>
+        </member>
+        <member name="P:docusystem.Models.User.Roles">
+            <summary>Spatie / other stacks that expose <c>roles</c> as an array; first entry is used when <see cref="P:docusystem.Models.User.UserRole"/> is null.</summary>
+        </member>
+        <member name="P:docusystem.Models.User.RoleType">
+            <summary>
+            <c>users.role_type</c> (e.g. NULP schema: <c>ORG_OFFICER</c>, <c>APPROVER</c>, <c>ADMIN</c>).
+            </summary>
+        </member>
+        <member name="P:docusystem.Models.User.RoleTypeCamel">
+            <summary>Same as <see cref="P:docusystem.Models.User.RoleType"/> when the API returns camelCase JSON.</summary>
+        </member>
+        <member name="P:docusystem.Models.User.RoleId">
+            <summary>FK to <c>roles.id</c> when the API only sends an id, not a nested <c>role</c> object.</summary>
+        </member>
+        <member name="P:docusystem.Models.User.CurrentRole">
+            <summary>Some APIs use <c>current_role</c> instead of <c>role</c>.</summary>
+        </member>
+        <member name="P:docusystem.Models.User.Role">
+            <summary>Human-friendly role label for UI and for legacy checks (e.g. "RSO President"). Not sent as top-level JSON — derived from <see cref="P:docusystem.Models.User.UserRole"/>.</summary>
+        </member>
+        <member name="P:docusystem.Models.User.RoleApprovalLevel">
+            <summary>From <c>roles.approval_level</c> when the API includes the <c>role</c> relation (NULL e.g. for RSO President).</summary>
+        </member>
+        <member name="P:docusystem.Models.User.RoleKey">
+            <summary>Machine slug — <c>roles.name</c> (e.g. rso_president) first, then legacy NULP <c>role_type</c>.</summary>
+        </member>
+        <member name="P:docusystem.Models.User.OrganizationName">
+            <summary>RSO / organization the user represents (e.g. RSO President scope). From Laravel <c>organization_name</c> on the user or membership.</summary>
+        </member>
+        <member name="P:docusystem.Models.User.DisplayName">
+            <summary>Name for UI — uses full_name from API, or first + last, or email local-part.</summary>
+        </member>
+        <member name="T:docusystem.Models.UserRole">
+            <summary>Row from <c>roles</c> (FK on user) — <c>name</c>, <c>display_name</c>, <c>approval_level</c>.</summary>
+        </member>
+        <member name="P:docusystem.Models.UserRole.ApprovalLevel">
+            <summary>Workflow order (1–7 in seed data); <c>NULL</c> e.g. for <c>rso_president</c>.</summary>
+        </member>
+        <member name="T:docusystem.Pages.Approvals.PendingApprovalsPage">
+            <summary>
+            Lists proposals pending action — data from <see cref="M:docusystem.Services.IProposalService.GetPendingApprovalsAsync(System.Threading.CancellationToken)"/> (TODO: Laravel).
+            </summary>
+        </member>
+        <member name="M:docusystem.Pages.Approvals.PendingApprovalsPage.TryApplyQueryFilter">
+            <summary>Maps <c>//pendingapprovals?filter=…</c> (e.g. from the dashboard) to the chip state.</summary>
+        </member>
+        <member name="M:docusystem.Pages.Approvals.PendingApprovalsPage.OpenProposalDetailsAsync(docusystem.Models.Proposal)">
+            <summary>Loads the latest proposal snapshot, stores it in session, and opens the contextual details page.</summary>
+        </member>
+        <member name="T:docusystem.Pages.Approvals.ProposalDetailsPage">
+            <summary>
+            Proposal details and approval actions — calls <see cref="T:docusystem.Services.IApprovalService"/> (Laravel when implemented).
+            </summary>
+        </member>
+        <member name="T:docusystem.Pages.Dashboard.DashboardPage">
+            <summary>
+            Dashboard — counts from <see cref="T:docusystem.Services.IProposalService"/> (empty until API is wired).
+            </summary>
+        </member>
+        <member name="M:docusystem.Pages.Dashboard.DashboardPage.OnGoToPendingApprovalsBrowseClicked(System.Object,System.EventArgs)">
+            <summary>Dashboard → full Pending Approvals list (All).</summary>
+        </member>
+        <member name="M:docusystem.Pages.Dashboard.DashboardPage.OnOpenPendingNeedsReviewClicked(System.Object,System.EventArgs)">
+            <summary>Summary card: items at the user’s stage (Needs my review).</summary>
+        </member>
+        <member name="M:docusystem.Pages.Dashboard.DashboardPage.OnViewApprovedClicked(System.Object,System.EventArgs)">
+            <summary>Completed count card — same queue with All filter (fully approved may be off-queue depending on API).</summary>
+        </member>
+        <member name="T:docusystem.Pages.Forms.ActivityRequestFormPage">
+            <summary>
+            Activity Request Form — opened from Proposal Details for the proposal in <see cref="P:docusystem.Services.AppSessionService.SelectedProposal"/>.
+            </summary>
+        </member>
+        <member name="M:docusystem.Pages.Forms.ActivityRequestFormPage.OnSaveDraftClicked(System.Object,System.EventArgs)">
+            <summary>Placeholder — wire to local draft store / API later.</summary>
+        </member>
+        <member name="M:docusystem.Pages.Forms.ActivityRequestFormPage.OnSubmitClicked(System.Object,System.EventArgs)">
+            <summary>Placeholder validation only; no backend submit.</summary>
+        </member>
+        <member name="T:docusystem.Pages.Forms.ProposalFormPage">
+            <summary>
+            Full proposal form — opens from Proposal Details for the proposal in <see cref="P:docusystem.Services.AppSessionService.SelectedProposal"/>.
+            </summary>
+        </member>
+        <member name="T:docusystem.Pages.Login.LoginPage">
+            <summary>
+            Login screen — layout in LoginPage.xaml. Authentication via <see cref="T:docusystem.Services.IAuthService"/> (Laravel API).
+            </summary>
+        </member>
+        <member name="T:docusystem.Pages.Notifications.NotificationsPage">
+            <summary>
+            Notifications list — data from <see cref="M:docusystem.Services.INotificationService.GetNotificationsAsync(System.Threading.CancellationToken)"/> (TODO: Laravel).
+            </summary>
+        </member>
+        <member name="T:docusystem.Pages.RevisionHistory.RevisionHistoryPage">
+            <summary>
+            Revision timeline — data from <see cref="M:docusystem.Services.IRevisionService.GetRevisionHistoryAsync(System.Int32,System.Threading.CancellationToken)"/> (TODO: Laravel).
+            </summary>
+        </member>
+        <member name="T:docusystem.Serialization.ApiUserJson">
+            <summary>
+            Resolves a <see cref="T:docusystem.Models.User"/> from common Laravel response shapes: plain user JSON,
+            <c>{ "user": { ... } }</c>, and <c>{ "data": { ... } }</c> / <c>{ "data": { "user": ... } }</c>.
+            </summary>
+        </member>
+        <member name="M:docusystem.Serialization.ApiUserJson.DeserializeUser(System.String,System.Text.Json.JsonSerializerOptions)">
+            <summary>Parse root object and return the first element that deserializes to <see cref="T:docusystem.Models.User"/> with an email.</summary>
+        </member>
+        <member name="T:docusystem.Serialization.LaravelUserCoercion">
+            <summary>
+            Last-resort parse when full <see cref="T:docusystem.Models.User"/> deserialization fails but JSON has <c>email</c> and optional <c>role</c> / <c>role_id</c>.
+            </summary>
+        </member>
+        <member name="T:docusystem.Serialization.UserRoleJsonConverter">
+            <summary>
+            Deserializes Laravel <c>role</c> whether the API sends an object, a string slug, or a numeric id.
+            </summary>
+        </member>
+        <member name="T:docusystem.Serialization.UserRoleListJsonConverter">
+            <summary>
+            Spatie sometimes serializes <c>roles</c> as an array of strings; otherwise each item is a role object.
+            The default <see cref="T:System.Collections.Generic.List`1"/> serializer would throw on string elements, causing the whole
+            <see cref="T:docusystem.Models.User"/> parse to fail and the app to keep the old session.
+            </summary>
+        </member>
+        <member name="T:docusystem.Services.ApiEndpointOptions">
+            <summary>Runtime API targets — loaded from <c>appsettings.json</c> and optional Preferences overrides.</summary>
+        </member>
+        <member name="M:docusystem.Services.ApiEndpointOptions.RemapLocalhostForAndroidEmulator">
+            <summary>
+            <c>127.0.0.1</c> on the Android <b>emulator</b> is the emulator itself, not the dev PC. Map to <c>10.0.2.2</c>.
+            Skipped on physical devices (they may use <c>adb reverse</c> with localhost or a LAN IP).
+            </summary>
+        </member>
+        <member name="T:docusystem.Services.ApiService">
+            <summary>
+            Laravel API helper using <see cref="T:System.Net.Http.IHttpClientFactory"/> (named client <c>LaravelApi</c>) and <see cref="T:docusystem.Services.ApiEndpointOptions"/> for the base address.
+            Prefer this over <c>new HttpClient()</c> so connections are pooled and the bearer handler applies.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.ApiService.SetAuthToken(System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:docusystem.Services.ApiService.LoginAsync(System.String,System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:docusystem.Services.ApiService.NormalizePath(System.String)">
+            <summary>Paths are relative to <see cref="P:docusystem.Services.ApiEndpointOptions.LaravelBaseUrl"/>, e.g. <c>api/proposals/pending</c>.</summary>
+        </member>
+        <member name="T:docusystem.Services.ApiSettingsLoader">
+            <summary>Loads <c>Resources/Raw/appsettings.json</c> at startup (MauiAsset logical name <c>appsettings.json</c>).</summary>
+        </member>
+        <member name="T:docusystem.Services.AppConfiguration">
+            <summary>Startup settings loaded from bundled <c>appsettings.json</c>.</summary>
+        </member>
+        <member name="T:docusystem.Services.ApprovalRules">
+            <summary>
+            Client-side permission checks for proposals. Prefer server-provided
+            <see cref="P:docusystem.Models.Proposal.CanEdit"/> / <see cref="P:docusystem.Models.Proposal.CanApprove"/> when present; this fills in
+            flags from role and workflow stage when needed for the UI.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.ApprovalRules.ApplyWorkflowPermissions(docusystem.Models.Proposal,docusystem.Models.User)">
+            <summary>
+            Sets <see cref="P:docusystem.Models.Proposal.CanEdit"/> and <see cref="P:docusystem.Models.Proposal.CanApprove"/> from the current user, role, and stage.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.ApprovalRules.CanEdit(docusystem.Models.User,docusystem.Models.Proposal)">
+            <summary>Uses flags set by the API or <see cref="M:docusystem.Services.ApprovalRules.ApplyWorkflowPermissions(docusystem.Models.Proposal,docusystem.Models.User)"/>.</summary>
+        </member>
+        <member name="T:docusystem.Services.ApprovalService">
+            <summary>Approval workflow UI and sign-off actions via the Laravel API.</summary>
+        </member>
+        <member name="F:docusystem.Services.ApprovalService.ApprovalSequence">
+            <summary>Academic chain only — prefer building steps from <see cref="M:docusystem.Services.ApprovalService.BuildApprovalSteps(docusystem.Models.Proposal)"/> per proposal.</summary>
+        </member>
+        <member name="T:docusystem.Services.ApprovalWorkflow">
+            <summary>
+            Legacy entry point for the <strong>Academic</strong> chain only.
+            Prefer <see cref="M:docusystem.Services.ProposalWorkflowService.GetStages(docusystem.Models.ApprovalFlowType)"/> with a proposal's <see cref="P:docusystem.Models.Proposal.ApprovalFlowType"/>.
+            </summary>
+        </member>
+        <member name="T:docusystem.Services.AppSessionService">
+            <summary>
+            In-memory session for the signed-in user and navigation context (selected proposal).
+            Token and user snapshot are persisted via <see cref="T:docusystem.Services.SessionPersistenceService"/>.
+            </summary>
+        </member>
+        <member name="P:docusystem.Services.AppSessionService.NextProposalFormOpenBrowseOnly">
+            <summary>
+            When true, the next navigation to <c>proposalform</c> should open the form in browse-only mode (even if the user could edit).
+            Cleared by <see cref="M:docusystem.Services.AppSessionService.TryConsumeProposalFormBrowseOnly"/> after the form reads it.
+            </summary>
+        </member>
+        <member name="P:docusystem.Services.AppSessionService.AccessToken">
+            <summary>Bearer token from Laravel Sanctum / Passport — attached by <see cref="T:docusystem.Services.LaravelAuthDelegatingHandler"/>.</summary>
+        </member>
+        <member name="M:docusystem.Services.AppSessionService.SetAccessToken(System.String)">
+            <summary>Sets only the bearer token (e.g. after loading from <see cref="T:Microsoft.Maui.Storage.SecureStorage"/>). Prefer <see cref="M:docusystem.Services.AppSessionService.SetCurrentUser(docusystem.Models.User,System.String)"/> when the user object is known.</summary>
+        </member>
+        <member name="M:docusystem.Services.AppSessionService.PrepareProposalFormNavigation(System.Boolean)">
+            <summary>Call before <c>GoToAsync("proposalform")</c>: <paramref name="browseOnly"/> true from &quot;View&quot;, false from &quot;Edit / Collaborate&quot;.</summary>
+        </member>
+        <member name="M:docusystem.Services.AppSessionService.TryConsumeProposalFormBrowseOnly">
+            <summary>Returns whether this open was &quot;view only&quot; and resets the flag.</summary>
+        </member>
+        <member name="T:docusystem.Services.AuthService">
+            <summary>
+            Login: <see cref="P:docusystem.Services.AuthOptions.Provider"/> <c>Supabase</c> → GoTrue email/password; <c>Laravel</c> → Sanctum API.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.AuthService.GetLaravelUserFromApiUserEndpointAsync(System.Threading.CancellationToken)">
+            <summary>GET auth user (Sanctum) — first success wins; some apps use <c>me</c> or <c>v1</c> instead of <c>user</c>.</summary>
+        </member>
+        <member name="M:docusystem.Services.AuthService.MergeLaravelUserProfile(docusystem.Models.User,docusystem.Models.User)">
+            <summary>Keeps names from login when <c>api/user</c> is thin; keeps role from API when present.</summary>
+        </member>
+        <member name="T:docusystem.Services.IApiService">
+            <summary>Typed HTTP access to the Laravel API — uses the named <c>LaravelApi</c> <see cref="T:System.Net.Http.HttpClient"/> and session bearer token.</summary>
+        </member>
+        <member name="M:docusystem.Services.IApiService.SetAuthToken(System.String)">
+            <summary>Stores the token so <see cref="T:docusystem.Services.LaravelAuthDelegatingHandler"/> sends <c>Authorization: Bearer</c> on the next requests.</summary>
+        </member>
+        <member name="M:docusystem.Services.IApiService.LoginAsync(System.String,System.String,System.Threading.CancellationToken)">
+            <summary>POST <c>api/login</c> — delegates to <see cref="T:docusystem.Services.IAuthService"/> so there is a single implementation.</summary>
+        </member>
+        <member name="T:docusystem.Services.IApprovalService">
+            <summary>
+            Approval actions and derived workflow display — server is source of truth for routing.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.IApprovalService.BuildApprovalSteps(docusystem.Models.Proposal)">
+            <summary>Builds a read-only timeline from proposal fields returned by the API.</summary>
+        </member>
+        <member name="M:docusystem.Services.IApprovalService.ApproveProposalAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>TODO: POST /api/proposals/{id}/approve (Laravel route as designed).</summary>
+        </member>
+        <member name="M:docusystem.Services.IApprovalService.ReturnProposalAsync(System.Int32,System.String,System.Threading.CancellationToken)">
+            <summary>TODO: POST /api/proposals/{id}/return-for-revision with remarks body.</summary>
+        </member>
+        <member name="T:docusystem.Services.IAuthService">
+            <summary>
+            Laravel authentication — TODO: wire to Sanctum/Passport login endpoint.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.IAuthService.LoginAsync(System.String,System.String,System.Threading.CancellationToken)">
+            <summary>
+            On success, implementation stores the session via <see cref="M:docusystem.Services.ISessionService.SetFromLoginAsync(docusystem.Models.User,System.String,System.Threading.CancellationToken)"/>
+            (in-memory + secure storage) so the token is available for <c>LaravelApi</c> and other services.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.IAuthService.LogoutAsync(System.Threading.CancellationToken)">
+            <summary>TODO: POST /api/logout and revoke token on server if applicable.</summary>
+        </member>
+        <member name="M:docusystem.Services.IAuthService.GetCurrentUserAsync(System.Threading.CancellationToken)">
+            <summary>TODO: GET /api/user — hydrate current user from token.</summary>
+        </member>
+        <member name="T:docusystem.Services.INotificationService">
+            <summary>
+            In-app notifications from Laravel.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.INotificationService.GetNotificationsAsync(System.Threading.CancellationToken)">
+            <summary>TODO: GET /api/notifications — server scopes to authenticated user.</summary>
+        </member>
+        <member name="M:docusystem.Services.INotificationService.MarkAsReadAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>TODO: PATCH /api/notifications/{id}/read</summary>
+        </member>
+        <member name="T:docusystem.Services.IProposalService">
+            <summary>
+            Proposals from Laravel — list/detail/update.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.IProposalService.GetPendingApprovalsAsync(System.Threading.CancellationToken)">
+            <summary>TODO: GET /api/proposals/pending (or equivalent) — backend filters by authenticated user.</summary>
+        </member>
+        <member name="M:docusystem.Services.IProposalService.GetProposalByIdAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>TODO: GET /api/proposals/{id}</summary>
+        </member>
+        <member name="M:docusystem.Services.IProposalService.UpdateProposalAsync(docusystem.Models.Proposal,System.Threading.CancellationToken)">
+            <summary>TODO: PUT/PATCH /api/proposals/{id}</summary>
+        </member>
+        <member name="T:docusystem.Services.IRevisionService">
+            <summary>
+            Proposal revision / audit log from Laravel.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.IRevisionService.GetRevisionHistoryAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>TODO: GET /api/proposals/{proposalId}/revisions (adjust route to your API).</summary>
+        </member>
+        <member name="M:docusystem.Services.IRevisionService.SubmitFieldChangesAsync(System.Int32,System.Collections.Generic.IReadOnlyList{docusystem.Services.FieldChange},System.Threading.CancellationToken)">
+            <summary>
+            TODO: Optional — POST field-level change log if your API records client-side edits separately.
+            </summary>
+        </member>
+        <member name="T:docusystem.Services.ISessionService">
+            <summary>App-wide session: bearer token + user info for the logged-in user (memory + optional secure storage).</summary>
+        </member>
+        <member name="M:docusystem.Services.ISessionService.SetFromLoginAsync(docusystem.Models.User,System.String,System.Threading.CancellationToken)">
+            <summary>Saves session after a successful API login. Updates in-memory state and <see cref="T:docusystem.Services.SessionPersistenceService"/> (SecureStorage).</summary>
+        </member>
+        <member name="M:docusystem.Services.ISessionService.SetSessionAsync(System.String,System.Int32,System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>Sets session from explicit fields. Prefer <see cref="M:docusystem.Services.ISessionService.SetFromLoginAsync(docusystem.Models.User,System.String,System.Threading.CancellationToken)"/> when you already have a <see cref="T:docusystem.Models.User"/>.</summary>
+        </member>
+        <member name="T:docusystem.Services.LaravelAuthDelegatingHandler">
+            <summary>Attaches <c>Authorization: Bearer</c> for Laravel Sanctum when a token exists. Skips login requests.</summary>
+        </member>
+        <member name="T:docusystem.Services.MobileDataOptions">
+            <summary>Where the mobile app loads domain data: Supabase (PostgREST) or Laravel API.</summary>
+        </member>
+        <member name="P:docusystem.Services.MobileDataOptions.Backend">
+            <summary><c>Supabase</c> = direct <see cref="T:docusystem.Services.SupabaseService"/>; <c>Laravel</c> = HTTP API.</summary>
+        </member>
+        <member name="T:docusystem.Services.AuthOptions">
+            <summary>Sign-in: Supabase Auth (email/password) or Laravel Sanctum API.</summary>
+        </member>
+        <member name="P:docusystem.Services.AuthOptions.Provider">
+            <summary><c>Supabase</c> = <c>Client.Auth</c>; <c>Laravel</c> = <c>POST /api/login</c>.</summary>
+        </member>
+        <member name="T:docusystem.Services.NotificationService">
+            <summary>Notifications from the Laravel API.</summary>
+        </member>
+        <member name="T:docusystem.Services.ProposalService">
+            <summary>
+            Proposals — Laravel API or direct Supabase (<see cref="P:docusystem.Services.MobileDataOptions.Backend"/>).
+            </summary>
+        </member>
+        <member name="T:docusystem.Services.ProposalWorkflowService">
+            <summary>
+            Ordered signatories for Academic vs Non-Academic events (client-side until the API supplies a full chain).
+            </summary>
+        </member>
+        <member name="F:docusystem.Services.ProposalWorkflowService.AllSignatoryRoles">
+            <summary>Every role name that can appear as a signatory in either flow.</summary>
+        </member>
+        <member name="M:docusystem.Services.ProposalWorkflowService.GetCompactWorkflowNote(docusystem.Models.ApprovalFlowType)">
+            <summary>Single short line for proposal details UI (full order is on the approval steps list).</summary>
+        </member>
+        <member name="T:docusystem.Services.RevisionService">
+            <summary>Revision history from the Laravel API.</summary>
+        </member>
+        <member name="T:docusystem.Services.SessionPersistenceService">
+            <summary>
+            Persists bearer token and user JSON in <see cref="T:Microsoft.Maui.Storage.SecureStorage"/> (OS keychain / encrypted prefs).
+            Called from <see cref="T:docusystem.Services.ISessionService"/> after login — <see cref="!:Maui.MauiApp"/> can restore on next launch.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.SessionPersistenceService.TryRestoreAsync(docusystem.Services.AppSessionService,docusystem.AppShell,System.Threading.CancellationToken)">
+            <summary>Restores session and navigates to dashboard when valid stored credentials exist.</summary>
+        </member>
+        <member name="T:docusystem.Services.SessionService">
+            <summary>
+            Coordinates the logged-in <see cref="T:docusystem.Models.User"/> and bearer token. Uses
+            <see cref="T:docusystem.Services.AppSessionService"/> for in-memory state (HttpClient, pages) and
+            <see cref="T:docusystem.Services.SessionPersistenceService"/> so the session can survive a cold start.
+            </summary>
+            <remarks>
+            TODO: If you add extra-sensitive fields, consider encrypting values before
+            <see cref="M:docusystem.Services.SessionPersistenceService.SaveAsync(docusystem.Models.User,System.String,System.Threading.CancellationToken)"/>, or split token vs profile in SecureStorage.
+            </remarks>
+        </member>
+        <member name="M:docusystem.Services.SessionService.SetFromLoginAsync(docusystem.Models.User,System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:docusystem.Services.SessionService.SetSessionAsync(System.String,System.Int32,System.String,System.String,System.String,System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="M:docusystem.Services.SessionService.GetCurrentUser">
+            <inheritdoc />
+        </member>
+        <member name="M:docusystem.Services.SessionService.GetToken">
+            <inheritdoc />
+        </member>
+        <member name="M:docusystem.Services.SessionService.IsLoggedIn">
+            <inheritdoc />
+        </member>
+        <member name="M:docusystem.Services.SessionService.ClearSessionAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
+        </member>
+        <member name="T:docusystem.Services.SupabaseService">
+            <summary>
+            Optional Supabase client — available when <c>Supabase:Url</c> and <c>Supabase:AnonKey</c> are set.
+            Use <see cref="P:Supabase.Client.Auth"/> for sign-in, <see cref="M:Supabase.Client.From``1"/> for tables, <see cref="P:Supabase.Client.Storage"/> for files.
+            </summary>
+        </member>
+        <member name="T:docusystem.Services.SupabaseSettings">
+            <summary>Project URL and anon key from <c>appsettings.json</c> — use the public anon key only (never the service role key in the app).</summary>
+        </member>
+        <member name="T:docusystem.Services.SupabaseUserMapper">
+            <summary>Maps Supabase Auth <see cref="T:Supabase.Gotrue.User"/> into app <see cref="T:docusystem.Models.User"/>.</summary>
+        </member>
+        <member name="T:docusystem.UiBrand">
+            <summary>Navy + white palette for the governance app (plus light navy lines and muted navy text for readability).</summary>
+        </member>
+        <member name="F:docusystem.UiBrand.NavyWash">
+            <summary>Very light navy wash on white (same idea as PrimaryLight).</summary>
+        </member>
+        <member name="F:docusystem.UiBrand.NavyMutedText">
+            <summary>Navy at ~55% opacity on white for secondary labels.</summary>
+        </member>
+        <member name="F:docusystem.UiBrand.Success">
+            <summary>Success / completed-step green (align with <c>SuccessColor</c> in app resources).</summary>
+        </member>
+        <member name="T:docusystem.Resource">
+            <summary>
+            Android Resource Designer class.
+            Exposes the Android Resource designer assembly into the project Namespace.
+            </summary>
+        </member>
+    </members>
+</doc>

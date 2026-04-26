@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="docusystem.Pages.Approvals.PendingApprovalsPage"
+             BackgroundColor="{StaticResource White}"
+             Title="Pending Approvals">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- Navy Page Header -->
+        <Grid Grid.Row="0" BackgroundColor="#003087" Padding="18,16,18,20">
+            <VerticalStackLayout Spacing="4">
+                <Label Text="Pending Approvals" FontSize="20" FontAttributes="Bold" TextColor="White" />
+                <Label Text="Items at your stage or returned for revision. Tap a card to open details."
+                       FontSize="12" TextColor="#B0C4E8" LineBreakMode="WordWrap" />
+            </VerticalStackLayout>
+        </Grid>
+
+        <!-- Search + Filter Card -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}"
+                Margin="16,12,16,0">
+            <VerticalStackLayout Spacing="10">
+                <Label Text="Search"
+                       FontSize="11" FontAttributes="Bold"
+                       TextColor="{StaticResource Primary}" />
+                <Border Style="{StaticResource InputBorder}">
+                    <Entry x:Name="SearchEntry"
+                           Placeholder="Search by title or organization…"
+                           TextChanged="OnSearchTextChanged"
+                           TextColor="{StaticResource PrimaryDarkText}"
+                           BackgroundColor="Transparent" />
+                </Border>
+                <Label Text="Filters"
+                       FontSize="11" FontAttributes="Bold"
+                       TextColor="{StaticResource Primary}" />
+
+                <ScrollView Orientation="Horizontal">
+                    <HorizontalStackLayout Spacing="8" Padding="0,2,0,2">
+                        <Button Style="{StaticResource ChipButton}"
+                                x:Name="FilterAllStatusBtn"
+                                Text="All"
+                                Clicked="OnStatusFilterClicked"
+                                ClassId="All" />
+                        <Button Style="{StaticResource ChipButton}"
+                                x:Name="FilterPendingStatusBtn"
+                                Text="Needs my review"
+                                Clicked="OnStatusFilterClicked"
+                                ClassId="Pending" />
+                        <Button Style="{StaticResource ChipButton}"
+                                x:Name="FilterReturnedStatusBtn"
+                                Text="Returned"
+                                Clicked="OnStatusFilterClicked"
+                                ClassId="Returned" />
+                    </HorizontalStackLayout>
+                </ScrollView>
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- Proposals List -->
+        <RefreshView
+            x:Name="ProposalsRefresh"
+            Grid.Row="2"
+            RefreshColor="#003087"
+            Refreshing="OnProposalsRefreshing">
+            <ScrollView>
+                <VerticalStackLayout x:Name="ProposalsStack" Padding="16,12,16,20" Spacing="10" />
+            </ScrollView>
+        </RefreshView>
+
+    </Grid>
+
+</ContentPage>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="docusystem.Pages.Notifications.NotificationsPage"
+             BackgroundColor="{StaticResource White}"
+             Title="Notifications">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- Navy Page Header -->
+        <Grid Grid.Row="0" BackgroundColor="#003087" Padding="18,16,18,20">
+            <VerticalStackLayout Spacing="4">
+                <Label Text="Notifications" FontSize="20" FontAttributes="Bold" TextColor="White" />
+                <Label Text="Approval and revision updates. Unread items are highlighted."
+                       FontSize="12" TextColor="White" Opacity="0.9" LineBreakMode="WordWrap" />
+            </VerticalStackLayout>
+        </Grid>
+
+        <!-- Filter Card -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}"
+                Margin="16,12,16,0">
+            <ScrollView Orientation="Horizontal">
+                <HorizontalStackLayout Spacing="8" Padding="0,2,0,2">
+                    <Button Style="{StaticResource ChipButton}"
+                            x:Name="FilterAllBtn"
+                            Text="All"
+                            Clicked="OnFilterClicked"
+                            ClassId="All" />
+                    <Button Style="{StaticResource ChipButton}"
+                            x:Name="FilterUnreadBtn"
+                            Text="Unread"
+                            Clicked="OnFilterClicked"
+                            ClassId="Unread" />
+                    <Button Style="{StaticResource ChipButton}"
+                            x:Name="FilterApprovalBtn"
+                            Text="Approvals"
+                            Clicked="OnFilterClicked"
+                            ClassId="ApprovalUpdate" />
+                    <Button Style="{StaticResource ChipButton}"
+                            x:Name="FilterRevisionBtn"
+                            Text="Revisions"
+                            Clicked="OnFilterClicked"
+                            ClassId="RevisionUpdate" />
+                    <Button Style="{StaticResource ChipButton}"
+                            x:Name="FilterFinalBtn"
+                            Text="Final Approval"
+                            Clicked="OnFilterClicked"
+                            ClassId="FinalApproval" />
+                </HorizontalStackLayout>
+            </ScrollView>
+        </Border>
+
+        <!-- Notifications List -->
+        <RefreshView
+            x:Name="NotificationsRefresh"
+            Grid.Row="2"
+            RefreshColor="#003087"
+            Refreshing="OnNotificationsRefreshing">
+            <ScrollView>
+                <VerticalStackLayout x:Name="NotificationsStack" Padding="16,12,16,20" Spacing="10" />
+            </ScrollView>
+        </RefreshView>
+
+    </Grid>
+
+</ContentPage>
