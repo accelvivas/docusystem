@@ -58,11 +58,11 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <Label Text="Summary counts"
+                <Label Text="Summary"
                        FontSize="13" FontAttributes="Bold"
                        TextColor="{StaticResource Primary}" />
 
-                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto"
                       ColumnSpacing="10" RowSpacing="10">
 
                     <Border Grid.Row="0" Grid.Column="0"
@@ -70,29 +70,17 @@
                             Stroke="{StaticResource NavyLine}"
                             StrokeThickness="1"
                             StrokeShape="RoundRectangle 14" Padding="12">
-                        <VerticalStackLayout Spacing="6">
-                            <Border BackgroundColor="{StaticResource PrimaryLight}"
-                                    StrokeShape="RoundRectangle 8"
-                                    Stroke="Transparent"
-                                    Padding="6,4"
-                                    HorizontalOptions="Start">
-                                <Label Text="Active in queue" FontSize="10" FontAttributes="Bold"
-                                       TextColor="{StaticResource Primary}" />
-                            </Border>
-                            <Label x:Name="PendingCountLabel" Text="0"
-                                   FontSize="28" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" HorizontalTextAlignment="Center" />
-                            <Label Text="At your stage"
-                                   FontSize="11" TextColor="{StaticResource Primary}"
-                                   Opacity="0.75"
-                                   HorizontalTextAlignment="Center" />
-                            <Button x:Name="ViewPendingBtn" Text="Open list"
-                                    FontSize="12" Padding="0,8"
-                                    BackgroundColor="{StaticResource Primary}"
-                                    TextColor="White"
-                                    CornerRadius="10"
-                                    HorizontalOptions="Fill"
-                                    Clicked="OnOpenPendingNeedsReviewClicked" />
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="PENDING APPROVALS"
+                                   FontSize="10"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}"
+                                   Opacity="0.78" />
+                            <Label x:Name="PendingApprovalsCountLabel"
+                                   Text="0"
+                                   FontSize="34"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" />
                         </VerticalStackLayout>
                     </Border>
 
@@ -101,32 +89,17 @@
                             Stroke="{StaticResource NavyLine}"
                             StrokeThickness="1"
                             StrokeShape="RoundRectangle 14" Padding="12">
-                        <VerticalStackLayout Spacing="6">
-                            <Border BackgroundColor="{StaticResource PrimaryLight}"
-                                    StrokeShape="RoundRectangle 8"
-                                    Stroke="Transparent"
-                                    Padding="6,4"
-                                    HorizontalOptions="Start">
-                                <Label Text="Returned" FontSize="10" FontAttributes="Bold"
-                                       TextColor="{StaticResource Primary}" />
-                            </Border>
-                            <Label x:Name="ReturnedCountLabel" Text="0"
-                                   FontSize="28" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" HorizontalTextAlignment="Center" />
-                            <Label Text="Needs changes"
-                                   FontSize="11" TextColor="{StaticResource Primary}"
-                                   Opacity="0.75"
-                                   HorizontalTextAlignment="Center" />
-                            <Button x:Name="ViewReturnedBtn" Text="Open list"
-                                    FontSize="12"
-                                    Padding="0,8"
-                                    BackgroundColor="White"
-                                    TextColor="{StaticResource Primary}"
-                                    BorderColor="{StaticResource NavyLine}"
-                                    BorderWidth="2"
-                                    CornerRadius="10"
-                                    HorizontalOptions="Fill"
-                                    Clicked="OnViewReturnedClicked" />
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="FOR REVISION FOLLOW-UP"
+                                   FontSize="10"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}"
+                                   Opacity="0.78" />
+                            <Label x:Name="RevisionFollowUpCountLabel"
+                                   Text="0"
+                                   FontSize="34"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" />
                         </VerticalStackLayout>
                     </Border>
 
@@ -135,22 +108,17 @@
                             Stroke="{StaticResource NavyLine}"
                             StrokeThickness="1"
                             StrokeShape="RoundRectangle 14" Padding="12">
-                        <VerticalStackLayout Spacing="6">
-                            <Border BackgroundColor="{StaticResource PrimaryLight}"
-                                    StrokeShape="RoundRectangle 8"
-                                    Stroke="Transparent"
-                                    Padding="6,4"
-                                    HorizontalOptions="Start">
-                                <Label Text="Waiting on others" FontSize="10" FontAttributes="Bold"
-                                       TextColor="{StaticResource Primary}" />
-                            </Border>
-                            <Label x:Name="WaitingOthersCountLabel" Text="0"
-                                   FontSize="28" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" HorizontalTextAlignment="Center" />
-                            <Label Text="Another reviewer"
-                                   FontSize="11" TextColor="{StaticResource Primary}"
-                                   Opacity="0.75"
-                                   HorizontalTextAlignment="Center" />
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="APPROVED THIS WEEK"
+                                   FontSize="10"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}"
+                                   Opacity="0.78" />
+                            <Label x:Name="ApprovedThisWeekCountLabel"
+                                   Text="0"
+                                   FontSize="34"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" />
                         </VerticalStackLayout>
                     </Border>
 
@@ -159,32 +127,36 @@
                             Stroke="{StaticResource NavyLine}"
                             StrokeThickness="1"
                             StrokeShape="RoundRectangle 14" Padding="12">
-                        <VerticalStackLayout Spacing="6">
-                            <Border BackgroundColor="{StaticResource PrimaryLight}"
-                                    StrokeShape="RoundRectangle 8"
-                                    Stroke="Transparent"
-                                    Padding="6,4"
-                                    HorizontalOptions="Start">
-                                <Label Text="Fully approved" FontSize="10" FontAttributes="Bold"
-                                       TextColor="{StaticResource Primary}" />
-                            </Border>
-                            <Label x:Name="ApprovedCountLabel" Text="0"
-                                   FontSize="28" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" HorizontalTextAlignment="Center" />
-                            <Label Text="Completed"
-                                   FontSize="11" TextColor="{StaticResource Primary}"
-                                   Opacity="0.75"
-                                   HorizontalTextAlignment="Center" />
-                            <Button x:Name="ViewApprovedBtn" Text="Open list"
-                                    FontSize="12"
-                                    Padding="0,8"
-                                    BackgroundColor="White"
-                                    TextColor="{StaticResource Primary}"
-                                    BorderColor="{StaticResource NavyLine}"
-                                    BorderWidth="2"
-                                    CornerRadius="10"
-                                    HorizontalOptions="Fill"
-                                    Clicked="OnViewApprovedClicked" />
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="REJECTED / RETURNED THIS WEEK"
+                                   FontSize="10"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}"
+                                   Opacity="0.78" />
+                            <Label x:Name="RejectedReturnedWeekCountLabel"
+                                   Text="0"
+                                   FontSize="34"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Grid.Row="2" Grid.ColumnSpan="2"
+                            BackgroundColor="White"
+                            Stroke="{StaticResource NavyLine}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 14" Padding="12">
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="OVERDUE ITEMS"
+                                   FontSize="10"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}"
+                                   Opacity="0.78" />
+                            <Label x:Name="OverdueItemsCountLabel"
+                                   Text="0"
+                                   FontSize="34"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" />
                         </VerticalStackLayout>
                     </Border>
 

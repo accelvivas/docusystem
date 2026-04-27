@@ -122,10 +122,10 @@
             </summary>
         </member>
         <member name="M:docusystem.Pages.Approvals.PendingApprovalsPage.TryApplyQueryFilter">
-            <summary>Maps <c>//pendingapprovals?filter=…</c> (e.g. from the dashboard) to the chip state.</summary>
+            <summary>Maps <c>//pendingapprovals?filter=…</c> (e.g. from dashboard) to the status picker.</summary>
         </member>
         <member name="M:docusystem.Pages.Approvals.PendingApprovalsPage.OpenProposalDetailsAsync(docusystem.Models.Proposal)">
-            <summary>Loads the latest proposal snapshot, stores it in session, and opens the contextual details page.</summary>
+            <summary>Loads the latest proposal snapshot, stores it in session, and opens contextual details page.</summary>
         </member>
         <member name="T:docusystem.Pages.Approvals.ProposalDetailsPage">
             <summary>

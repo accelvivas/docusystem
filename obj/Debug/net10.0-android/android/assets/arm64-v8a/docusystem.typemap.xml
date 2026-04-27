@@ -1,4 +1,4 @@
-<api type="debug" assembly-name="docusystem" mvid="e9d3c6595c3140369174486f9f8ae796">
+<api type="debug" assembly-name="docusystem" mvid="0ddf0762738c4b46b1f986f9a7096acb">
   <java-to-managed>
     <entry java-name="crc649c60a694cc9c8387/MainActivity" managed-name="docusystem.MainActivity, docusystem" managed-type-token-id="33554444" />
     <entry java-name="crc649c60a694cc9c8387/MainApplication" managed-name="docusystem.MainApplication, docusystem" managed-type-token-id="33554445" />

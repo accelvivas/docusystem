@@ -11,8 +11,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 {
 	private readonly AppSessionService _session;
 	private readonly IProposalService _proposalService;
-	private List<Proposal> allProposals = [];
-	private string currentStatusFilter = "All";
+	private List<Proposal> _allProposals = [];
 	private string? _pendingQueryFilter;
 
 	public PendingApprovalsPage(AppSessionService session, IProposalService proposalService)
@@ -46,14 +45,19 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		base.OnAppearing();
 		try
 		{
+			SetLoadingState(true);
+			InitializeFilterDefaults();
 			await LoadProposalsAsync();
 			TryApplyQueryFilter();
-			UpdateFilterUI();
 			ApplyFilters();
+			SetLoadingState(false);
 		}
 		catch (Exception ex)
 		{
 			System.Diagnostics.Debug.WriteLine(ex);
+			SetLoadingState(false);
+			ErrorStateLabel.Text = "Could not load pending approvals. Pull down to retry.";
+			ErrorStateLabel.IsVisible = true;
 		}
 	}
 
@@ -61,6 +65,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 	{
 		try
 		{
+			ErrorStateLabel.IsVisible = false;
 			await LoadProposalsAsync();
 			ApplyFilters();
 		}
@@ -79,13 +84,21 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		}
 
 		var proposals = (await _proposalService.GetPendingApprovalsAsync()).ToList();
-		allProposals = proposals
+		_allProposals = proposals
 			.OrderByDescending(p => string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase))
 			.ThenByDescending(p => p.SubmittedDate)
 			.ToList();
 	}
 
-	/// <summary>Maps <c>//pendingapprovals?filter=…</c> (e.g. from the dashboard) to the chip state.</summary>
+	private void InitializeFilterDefaults()
+	{
+		if (StatusPicker.SelectedIndex < 0)
+		{
+			StatusPicker.SelectedIndex = 0;
+		}
+	}
+
+	/// <summary>Maps <c>//pendingapprovals?filter=…</c> (e.g. from dashboard) to the status picker.</summary>
 	private void TryApplyQueryFilter()
 	{
 		if (string.IsNullOrWhiteSpace(_pendingQueryFilter))
@@ -101,23 +114,18 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		    key.Equals("myreview", StringComparison.OrdinalIgnoreCase) ||
 		    key.Equals("active", StringComparison.OrdinalIgnoreCase))
 		{
-			currentStatusFilter = "Pending";
+			StatusPicker.SelectedIndex = 1; // Pending
 		}
 		else if (key.Equals("returned", StringComparison.OrdinalIgnoreCase))
 		{
-			currentStatusFilter = "Returned";
+			StatusPicker.SelectedIndex = 3; // Returned / Rejected
 		}
 		else if (key.Equals("all", StringComparison.OrdinalIgnoreCase) ||
 		         key.Equals("browse", StringComparison.OrdinalIgnoreCase) ||
 		         key.Equals("approved", StringComparison.OrdinalIgnoreCase) ||
 		         key.Equals("fullyapproved", StringComparison.OrdinalIgnoreCase))
 		{
-			// "approved" from dashboard: show full list (fully approved may be excluded from this queue by the API).
-			currentStatusFilter = "All";
-		}
-		else
-		{
-			currentStatusFilter = "All";
+			StatusPicker.SelectedIndex = 0; // All
 		}
 	}
 
@@ -147,159 +155,220 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 
 		foreach (var proposal in proposalsToDisplay)
 		{
-			var proposalCard = CreateProposalCard(proposal);
+			var proposalCard = CreateProposalRowCard(proposal);
 			ProposalsStack.Children.Add(proposalCard);
 		}
 	}
 
-	private Frame CreateProposalCard(Proposal proposal)
+	private Border CreateProposalRowCard(Proposal proposal)
 	{
-		var statusColor = proposal.Status switch
-		{
-			"Under Review" => Ui.Navy,
-			"Returned for Revision" => Ui.White,
-			"Fully Approved" => Ui.White,
-			"Submitted" => Ui.Navy,
-			"Draft" => Ui.Navy,
-			_ => Ui.Navy
-		};
+		var (statusText, statusBg, statusFg, statusBorder) = GetStatusVisuals(proposal.Status);
+		var timingValue = GetPendingForDays(proposal);
+		var timingLabel = "PENDING FOR";
 
-		var statusBg = proposal.Status switch
+		var card = new Border
 		{
-			"Under Review" => Ui.NavyWash,
-			"Returned for Revision" => Ui.Navy,
-			"Fully Approved" => Ui.Navy,
-			"Submitted" => Ui.White,
-			"Draft" => Ui.NavyWash,
-			_ => Ui.NavyWash
-		};
-
-		var card = new Frame
-		{
-			CornerRadius = 14,
-			BorderColor = Ui.NavyLine,
-			HasShadow = false,
+			StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 12 },
+			Stroke = Color.FromArgb("#D2DDF0"),
+			StrokeThickness = 1,
 			Padding = 14,
-			BackgroundColor = Ui.White,
+			BackgroundColor = Colors.White,
 			Content = new VerticalStackLayout
 			{
 				Spacing = 10,
 				Children =
 				{
-					new VerticalStackLayout
+					new Label
 					{
-						Spacing = 3,
-						Children =
-						{
-							new Label
-							{
-								Text = proposal.Title,
-								FontSize = 14,
-								FontAttributes = FontAttributes.Bold,
-								TextColor = Ui.Navy
-							},
-							new Label
-							{
-								Text = proposal.OrganizationName,
-								FontSize = 12,
-								TextColor = Ui.NavyMutedText
-							},
-							new Label
-							{
-								Text = $"Event type: {ProposalWorkflowService.GetEventTypeDisplay(proposal.ApprovalFlowType)}",
-								FontSize = 11,
-								TextColor = Ui.NavyMutedText,
-								LineBreakMode = LineBreakMode.WordWrap
-							}
-						}
-					},
-					new HorizontalStackLayout
-					{
-						Spacing = 10,
-						Children =
-						{
-							new VerticalStackLayout
-							{
-								Spacing = 1,
-								Children =
-								{
-									new Label
-									{
-										Text = "CURRENT STAGE",
-										FontSize = 9,
-										TextColor = Ui.NavyMutedText,
-										FontAttributes = FontAttributes.Bold
-									},
-									new Label
-									{
-										Text = proposal.CurrentStage,
-										FontSize = 12,
-										FontAttributes = FontAttributes.Bold,
-										TextColor = Ui.Navy
-									}
-								}
-							},
-							new VerticalStackLayout
-							{
-								Spacing = 1,
-								Children =
-								{
-									new Label
-									{
-										Text = "STATUS",
-										FontSize = 9,
-										TextColor = Ui.NavyMutedText,
-										FontAttributes = FontAttributes.Bold
-									},
-									new Frame
-									{
-										Padding = new Thickness(7, 3),
-										CornerRadius = 6,
-										BorderColor = Ui.NavyLine,
-										HasShadow = false,
-										BackgroundColor = statusBg,
-										Content = new Label
-										{
-											Text = proposal.Status,
-											FontSize = 11,
-											FontAttributes = FontAttributes.Bold,
-											TextColor = statusColor
-										}
-									}
-								}
-							}
-						}
+						Text = string.IsNullOrWhiteSpace(proposal.Title) ? "Untitled proposal" : proposal.Title,
+						FontSize = 17,
+						FontAttributes = FontAttributes.Bold,
+						TextColor = Ui.Navy,
+						LineBreakMode = LineBreakMode.WordWrap
 					},
 					new Label
 					{
-						Text = $"Submitted: {proposal.SubmittedDate:MMM dd, yyyy}",
-						FontSize = 11,
-						TextColor = Ui.NavyMutedText
+						Text = string.IsNullOrWhiteSpace(proposal.OrganizationName) ? "—" : proposal.OrganizationName,
+						FontSize = 13,
+						TextColor = Color.FromArgb("#3F5C8F")
 					},
-					new Button
+					new Grid
 					{
-						Text = "Open proposal details",
-						FontSize = 12,
-						FontAttributes = FontAttributes.Bold,
-						TextColor = Ui.White,
-						BackgroundColor = Ui.Navy,
-						BorderColor = Ui.NavyLine,
-						BorderWidth = 1,
-						CornerRadius = 10,
-						Padding = new Thickness(0, 11),
-						CommandParameter = proposal
+						ColumnDefinitions = new ColumnDefinitionCollection { new(GridLength.Star), new(GridLength.Star) },
+						ColumnSpacing = 8,
+						Children =
+						{
+							BuildBadge("CURRENT STAGE", proposal.CurrentStage, Color.FromArgb("#EAF0FC"), Ui.Navy, Color.FromArgb("#C9D8F0")).Assign(gridColumn: 0),
+							BuildBadge("STATUS", statusText, statusBg, statusFg, statusBorder).Assign(gridColumn: 1)
+						}
+					},
+					BuildInfoLine(timingLabel, timingValue),
+					new Grid
+					{
+						ColumnDefinitions = new ColumnDefinitionCollection
+						{
+							new(GridLength.Star),
+							new(GridLength.Auto)
+						},
+						ColumnSpacing = 8,
+						Children =
+						{
+							new Label
+							{
+								Text = string.Empty
+							}.Assign(gridColumn: 0),
+							new Button
+							{
+								Text = "View / Review",
+								FontSize = 12,
+								FontAttributes = FontAttributes.Bold,
+								TextColor = Ui.Navy,
+								BackgroundColor = Colors.White,
+								BorderColor = Ui.Navy,
+								BorderWidth = 1.5,
+								CornerRadius = 10,
+								Padding = new Thickness(14,8),
+								CommandParameter = proposal
+							}.Assign(gridColumn:1)
+						}
 					}
 				}
 			}
 		};
 
-		var button = (Button)((VerticalStackLayout)card.Content).Children.Last();
-		button.Clicked += async (_, _) => await OpenProposalDetailsAsync(proposal);
+		var actionButton = FindActionButton(card);
+		if (actionButton is not null)
+		{
+			actionButton.Clicked += async (_, _) => await OpenProposalDetailsAsync(proposal);
+		}
 
 		return card;
 	}
 
-	/// <summary>Loads the latest proposal snapshot, stores it in session, and opens the contextual details page.</summary>
+	private static Button? FindActionButton(Border card)
+	{
+		if (card.Content is not VerticalStackLayout root || root.Children.Count == 0)
+		{
+			return null;
+		}
+
+		var actionRow = root.Children.LastOrDefault() as Grid;
+		return actionRow?.Children.OfType<Button>().FirstOrDefault();
+	}
+
+	private static View BuildBadge(string label, string value, Color bg, Color fg, Color border)
+	{
+		return new Border
+		{
+			BackgroundColor = bg,
+			Stroke = border,
+			StrokeThickness = 1,
+			StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
+			Padding = new Thickness(10, 6),
+			Content = new VerticalStackLayout
+			{
+				Spacing = 1,
+				Children =
+				{
+					new Label
+					{
+						Text = label,
+						FontSize = 9,
+						FontAttributes = FontAttributes.Bold,
+						TextColor = fg,
+						Opacity = 0.8
+					},
+					new Label
+					{
+						Text = string.IsNullOrWhiteSpace(value) ? "—" : value,
+						FontSize = 11,
+						FontAttributes = FontAttributes.Bold,
+						TextColor = fg,
+						LineBreakMode = LineBreakMode.TailTruncation
+					}
+				}
+			}
+		};
+	}
+
+	private static View BuildInfoLine(string label, string value) =>
+		new HorizontalStackLayout
+		{
+			Spacing = 6,
+			Children =
+			{
+				new Label
+				{
+					Text = $"{label}:",
+					FontSize = 11,
+					FontAttributes = FontAttributes.Bold,
+					TextColor = Color.FromArgb("#46618D")
+				},
+				new Label
+				{
+					Text = value,
+					FontSize = 12,
+					TextColor = Color.FromArgb("#0F2A5F")
+				}
+			}
+		};
+
+	private static string GetPendingForDays(Proposal proposal)
+	{
+		if (proposal.SubmittedDate == default)
+		{
+			return "—";
+		}
+
+		var days = Math.Max(0, (DateTime.Today - proposal.SubmittedDate.Date).Days);
+		return days == 1 ? "1 day" : $"{days} days";
+	}
+
+	private static (string Text, Color Bg, Color Fg, Color Border) GetStatusVisuals(string status)
+	{
+		var s = (status ?? string.Empty).Trim();
+		if (string.Equals(s, "Returned for Revision", StringComparison.OrdinalIgnoreCase) ||
+		    string.Equals(s, "Rejected", StringComparison.OrdinalIgnoreCase))
+		{
+			return ("RETURNED", Color.FromArgb("#FFF7E5"), Color.FromArgb("#8A6400"), Color.FromArgb("#D4AF37"));
+		}
+
+		if (string.Equals(s, "Approved", StringComparison.OrdinalIgnoreCase) ||
+		    string.Equals(s, "Fully Approved", StringComparison.OrdinalIgnoreCase))
+		{
+			return ("APPROVED", Color.FromArgb("#003087"), Colors.White, Color.FromArgb("#002A78"));
+		}
+
+		return ("PENDING", Color.FromArgb("#FFF7E5"), Color.FromArgb("#8A6400"), Color.FromArgb("#D4AF37"));
+	}
+
+	private static string GetSelectedStatusFilter(Picker picker)
+	{
+		if (picker.SelectedIndex < 0 || picker.SelectedIndex >= picker.Items.Count)
+		{
+			return "All";
+		}
+
+		return picker.Items[picker.SelectedIndex];
+	}
+
+	private static bool MatchesStatusFilter(Proposal proposal, string selectedStatus)
+	{
+		var s = proposal.Status ?? string.Empty;
+		return selectedStatus switch
+		{
+			"Pending" => string.Equals(s, "Under Review", StringComparison.OrdinalIgnoreCase) ||
+			             string.Equals(s, "Submitted", StringComparison.OrdinalIgnoreCase) ||
+			             string.Equals(s, "Pending", StringComparison.OrdinalIgnoreCase),
+			"Approved" => string.Equals(s, "Approved", StringComparison.OrdinalIgnoreCase) ||
+			              string.Equals(s, "Fully Approved", StringComparison.OrdinalIgnoreCase),
+			"Returned / Rejected" => string.Equals(s, "Returned for Revision", StringComparison.OrdinalIgnoreCase) ||
+			                         string.Equals(s, "Rejected", StringComparison.OrdinalIgnoreCase),
+			_ => true
+		};
+	}
+
+	/// <summary>Loads the latest proposal snapshot, stores it in session, and opens contextual details page.</summary>
 	private async Task OpenProposalDetailsAsync(Proposal proposal)
 	{
 		_session.SetSelectedProposal(proposal);
@@ -312,71 +381,45 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		await Shell.Current.GoToAsync("proposaldetails");
 	}
 
-	private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+	private void OnFilterChanged(object? sender, EventArgs e) => ApplyFilters();
+
+	private void OnSearchChanged(object? sender, TextChangedEventArgs e) => ApplyFilters();
+
+	private void OnResetFiltersClicked(object? sender, EventArgs e)
 	{
+		StatusPicker.SelectedIndex = 0;
+		SearchEntry.Text = string.Empty;
 		ApplyFilters();
-	}
-
-	private void OnStatusFilterClicked(object? sender, EventArgs e)
-	{
-		if (sender is Button button)
-		{
-			currentStatusFilter = button.ClassId;
-			UpdateFilterUI();
-			ApplyFilters();
-		}
-	}
-
-	private void UpdateFilterUI()
-	{
-		ResetStatusFilterButtons();
-
-		var activeButton = currentStatusFilter switch
-		{
-			"All" => FilterAllStatusBtn,
-			"Pending" => FilterPendingStatusBtn,
-			"Returned" => FilterReturnedStatusBtn,
-			_ => FilterAllStatusBtn
-		};
-
-		activeButton.BackgroundColor = Ui.Navy;
-		activeButton.TextColor = Ui.White;
-	}
-
-	private void ResetStatusFilterButtons()
-	{
-		FilterAllStatusBtn.BackgroundColor = Ui.NavyWash;
-		FilterAllStatusBtn.TextColor = Ui.Navy;
-
-		FilterPendingStatusBtn.BackgroundColor = Ui.NavyWash;
-		FilterPendingStatusBtn.TextColor = Ui.Navy;
-
-		FilterReturnedStatusBtn.BackgroundColor = Ui.NavyWash;
-		FilterReturnedStatusBtn.TextColor = Ui.Navy;
 	}
 
 	private void ApplyFilters()
 	{
-		var searchText = SearchEntry.Text?.ToLower() ?? string.Empty;
+		var statusFilter = GetSelectedStatusFilter(StatusPicker);
+		var search = (SearchEntry.Text ?? string.Empty).Trim().ToLowerInvariant();
 
-		var filtered = allProposals
+		var filtered = _allProposals
 			.Where(p =>
 			{
-				var matchesSearch = string.IsNullOrEmpty(searchText) ||
-					p.Title.ToLower().Contains(searchText) ||
-					p.OrganizationName.ToLower().Contains(searchText);
+				var matchesSearch = string.IsNullOrEmpty(search) ||
+				                    (p.OrganizationName ?? string.Empty).ToLowerInvariant().Contains(search) ||
+				                    (p.Title ?? string.Empty).ToLowerInvariant().Contains(search);
 
-				var matchesStatus = currentStatusFilter == "All" ||
-					(currentStatusFilter == "Pending" &&
-					 (string.Equals(p.Status, "Under Review", StringComparison.OrdinalIgnoreCase) ||
-					  string.Equals(p.Status, "Submitted", StringComparison.OrdinalIgnoreCase))) ||
-					(currentStatusFilter == "Returned" && string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase));
-
+				var matchesStatus = MatchesStatusFilter(p, statusFilter);
 				return matchesSearch && matchesStatus;
 			})
 			.ToList();
 
 		DisplayProposals(filtered);
+	}
+
+	private void SetLoadingState(bool loading)
+	{
+		LoadingIndicator.IsVisible = loading;
+		LoadingIndicator.IsRunning = loading;
+		if (loading)
+		{
+			ErrorStateLabel.IsVisible = false;
+		}
 	}
 
 	private async void OnOpenMockProposalClicked(object? sender, EventArgs e)
@@ -401,5 +444,24 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 
 		_session.SetSelectedProposal(mock);
 		await Shell.Current.GoToAsync("proposaldetails");
+	}
+}
+
+internal static class PendingApprovalUiExtensions
+{
+	public static T Assign<T>(this T view, int? gridColumn = null, int? gridRow = null)
+		where T : View
+	{
+		if (gridColumn.HasValue)
+		{
+			Grid.SetColumn(view, gridColumn.Value);
+		}
+
+		if (gridRow.HasValue)
+		{
+			Grid.SetRow(view, gridRow.Value);
+		}
+
+		return view;
 	}
 }

@@ -17,7 +17,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("docusystem")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0+022d60f6f1126f75195bf785bf4f0e3efda1fa8c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0+6779cde148da3fbc4e30cff1791a8b96be503fbe")]
 [assembly: System.Reflection.AssemblyProductAttribute("docusystem")]
 [assembly: System.Reflection.AssemblyTitleAttribute("docusystem")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -2,82 +2,110 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="docusystem.Pages.Approvals.PendingApprovalsPage"
-             BackgroundColor="{StaticResource White}"
+             BackgroundColor="#F5F7FC"
              Title="Pending Approvals">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <RefreshView x:Name="ProposalsRefresh"
+                 RefreshColor="#003087"
+                 Refreshing="OnProposalsRefreshing">
+        <ScrollView>
+            <VerticalStackLayout Padding="14,14,14,20" Spacing="12">
 
-        <!-- Navy Page Header -->
-        <Grid Grid.Row="0" BackgroundColor="#003087" Padding="18,16,18,20">
-            <VerticalStackLayout Spacing="4">
-                <Label Text="Pending Approvals" FontSize="20" FontAttributes="Bold" TextColor="White" />
-                <Label Text="Items at your stage or returned for revision. Tap a card to open details."
-                       FontSize="12" TextColor="#B0C4E8" LineBreakMode="WordWrap" />
-            </VerticalStackLayout>
-        </Grid>
+                <Border BackgroundColor="White"
+                        Stroke="#D7E0F2"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 16"
+                        Padding="14,14,14,16">
+                    <VerticalStackLayout Spacing="12">
 
-        <!-- Search + Filter Card -->
-        <Border Grid.Row="1" Style="{StaticResource CardBorder}"
-                Margin="16,12,16,0">
-            <VerticalStackLayout Spacing="10">
-                <Label Text="Search"
-                       FontSize="11" FontAttributes="Bold"
-                       TextColor="{StaticResource Primary}" />
-                <Border Style="{StaticResource InputBorder}">
-                    <Entry x:Name="SearchEntry"
-                           Placeholder="Search by title or organization…"
-                           TextChanged="OnSearchTextChanged"
-                           TextColor="{StaticResource PrimaryDarkText}"
-                           BackgroundColor="Transparent" />
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="My Pending Approvals"
+                                   FontSize="24"
+                                   FontAttributes="Bold"
+                                   TextColor="#0F2A5F" />
+                            <Label Text="Only documents currently routed to your role are shown."
+                                   FontSize="12"
+                                   TextColor="#4A648F"
+                                   LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+
+                        <BoxView Color="#E3E9F5" HeightRequest="1" />
+
+                        <!-- Lightweight search + filter -->
+                        <VerticalStackLayout Spacing="8">
+                            <Border Stroke="#C9D5EA"
+                                    StrokeThickness="1"
+                                    StrokeShape="RoundRectangle 10"
+                                    Padding="10,2">
+                                <Entry x:Name="SearchEntry"
+                                       Placeholder="Search proposal title or organization..."
+                                       TextChanged="OnSearchChanged"
+                                       TextColor="#15346C"
+                                       BackgroundColor="Transparent" />
+                            </Border>
+
+                            <HorizontalStackLayout Spacing="8">
+                                <Border Stroke="#C9D5EA"
+                                        StrokeThickness="1"
+                                        StrokeShape="RoundRectangle 10"
+                                        Padding="10,2"
+                                        HorizontalOptions="FillAndExpand">
+                                    <Picker x:Name="StatusPicker"
+                                            SelectedIndexChanged="OnFilterChanged"
+                                            TextColor="#15346C"
+                                            Title="All statuses"
+                                            HeightRequest="42">
+                                        <Picker.Items>
+                                            <x:String>All</x:String>
+                                            <x:String>Pending</x:String>
+                                            <x:String>Approved</x:String>
+                                            <x:String>Returned / Rejected</x:String>
+                                        </Picker.Items>
+                                    </Picker>
+                                </Border>
+
+                                <Button Text="Reset"
+                                        Clicked="OnResetFiltersClicked"
+                                        FontSize="12"
+                                        FontAttributes="Bold"
+                                        TextColor="#003087"
+                                        BackgroundColor="White"
+                                        BorderColor="#003087"
+                                        BorderWidth="1.5"
+                                        CornerRadius="10"
+                                        Padding="14,8" />
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+
+                        <ActivityIndicator x:Name="LoadingIndicator"
+                                           IsVisible="False"
+                                           IsRunning="False"
+                                           Color="#003087"
+                                           HorizontalOptions="Center" />
+
+                        <Label x:Name="ErrorStateLabel"
+                               IsVisible="False"
+                               TextColor="#8A6400"
+                               FontSize="12"
+                               LineBreakMode="WordWrap"
+                               HorizontalTextAlignment="Center" />
+
+                        <VerticalStackLayout x:Name="ProposalsStack" Spacing="10" />
+
+                        <Button Text="Open mock proposal preview"
+                                FontSize="12"
+                                FontAttributes="Bold"
+                                TextColor="#003087"
+                                BackgroundColor="White"
+                                BorderColor="#003087"
+                                BorderWidth="1.5"
+                                CornerRadius="10"
+                                Padding="0,10"
+                                Clicked="OnOpenMockProposalClicked" />
+                    </VerticalStackLayout>
                 </Border>
-                <Label Text="Filters"
-                       FontSize="11" FontAttributes="Bold"
-                       TextColor="{StaticResource Primary}" />
-
-                <ScrollView Orientation="Horizontal">
-                    <HorizontalStackLayout Spacing="8" Padding="0,2,0,2">
-                        <Button Style="{StaticResource ChipButton}"
-                                x:Name="FilterAllStatusBtn"
-                                Text="All"
-                                Clicked="OnStatusFilterClicked"
-                                ClassId="All" />
-                        <Button Style="{StaticResource ChipButton}"
-                                x:Name="FilterPendingStatusBtn"
-                                Text="Needs my review"
-                                Clicked="OnStatusFilterClicked"
-                                ClassId="Pending" />
-                        <Button Style="{StaticResource ChipButton}"
-                                x:Name="FilterReturnedStatusBtn"
-                                Text="Returned"
-                                Clicked="OnStatusFilterClicked"
-                                ClassId="Returned" />
-                    </HorizontalStackLayout>
-                </ScrollView>
-
-                <Button Text="Open mock proposal preview"
-                        FontSize="12"
-                        FontAttributes="Bold"
-                        TextColor="{StaticResource Primary}"
-                        BackgroundColor="White"
-                        BorderColor="{StaticResource Primary}"
-                        BorderWidth="1.5"
-                        CornerRadius="10"
-                        Padding="0,10"
-                        Clicked="OnOpenMockProposalClicked" />
             </VerticalStackLayout>
-        </Border>
-
-        <!-- Proposals List -->
-        <RefreshView
-            x:Name="ProposalsRefresh"
-            Grid.Row="2"
-            RefreshColor="#003087"
-            Refreshing="OnProposalsRefreshing">
-            <ScrollView>
-                <VerticalStackLayout x:Name="ProposalsStack" Padding="16,12,16,20" Spacing="10" />
-            </ScrollView>
-        </RefreshView>
-
-    </Grid>
+        </ScrollView>
+    </RefreshView>
 
 </ContentPage>

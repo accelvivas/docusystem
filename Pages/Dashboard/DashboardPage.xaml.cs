@@ -57,33 +57,44 @@ public partial class DashboardPage : ContentPage
 		ResponsibilityHintLabel.Text = BuildResponsibilityLine(currentUser.Role);
 
 		var proposals = (await _proposalService.GetPendingApprovalsAsync()).ToList();
+		var hasLiveData = proposals.Count > 0;
+		var weekStart = DateTime.Today.AddDays(-7);
 
 		var needsMyReview = proposals.Count(p =>
 			string.Equals(p.Status, "Under Review", StringComparison.OrdinalIgnoreCase) ||
 			string.Equals(p.Status, "Submitted", StringComparison.OrdinalIgnoreCase));
 
-		var returned = proposals.Count(p =>
+		var revisionFollowUp = proposals.Count(p =>
 			string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase));
 
-		var waitingOnOthers = proposals.Count(p =>
+		var approvedThisWeek = proposals.Count(p =>
+			(string.Equals(p.Status, "Fully Approved", StringComparison.OrdinalIgnoreCase) ||
+			 string.Equals(p.Status, "Approved", StringComparison.OrdinalIgnoreCase)) &&
+			((p.FullyApprovedAt ?? p.SubmittedDate) >= weekStart));
+
+		var rejectedOrReturnedThisWeek = proposals.Count(p =>
+			(string.Equals(p.Status, "Rejected", StringComparison.OrdinalIgnoreCase) ||
+			 string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase)) &&
+			p.SubmittedDate >= weekStart);
+
+		var overdueItems = proposals.Count(p =>
 			(string.Equals(p.Status, "Under Review", StringComparison.OrdinalIgnoreCase) ||
 			 string.Equals(p.Status, "Submitted", StringComparison.OrdinalIgnoreCase)) &&
-			!string.Equals(p.CurrentStage, currentUser.Role, StringComparison.OrdinalIgnoreCase));
+			p.SubmittedDate < DateTime.Today.AddDays(-7));
 
-		var approved = proposals.Count(p =>
-			string.Equals(p.Status, "Fully Approved", StringComparison.OrdinalIgnoreCase));
-
-		PendingCountLabel.Text = needsMyReview.ToString();
-		ReturnedCountLabel.Text = returned.ToString();
-		WaitingOthersCountLabel.Text = Math.Max(0, waitingOnOthers).ToString();
-		ApprovedCountLabel.Text = approved.ToString();
+		// If backend data is not available yet, keep the card layout useful with starter placeholders.
+		PendingApprovalsCountLabel.Text = (hasLiveData ? needsMyReview : 2).ToString();
+		RevisionFollowUpCountLabel.Text = (hasLiveData ? revisionFollowUp : 0).ToString();
+		ApprovedThisWeekCountLabel.Text = (hasLiveData ? approvedThisWeek : 0).ToString();
+		RejectedReturnedWeekCountLabel.Text = (hasLiveData ? rejectedOrReturnedThisWeek : 0).ToString();
+		OverdueItemsCountLabel.Text = (hasLiveData ? overdueItems : 0).ToString();
 
 		NeedsAttentionLabel.Text = BuildNeedsAttentionText(
 			currentUser.Role,
 			needsMyReview,
-			returned,
-			waitingOnOthers,
-			approved);
+			revisionFollowUp,
+			approvedThisWeek,
+			overdueItems);
 	}
 
 	private void ApplyHeader(User u)
@@ -106,9 +117,9 @@ public partial class DashboardPage : ContentPage
 	private static string BuildNeedsAttentionText(
 		string role,
 		int needsMyReview,
-		int returned,
-		int waitingOnOthers,
-		int approved)
+		int revisionFollowUp,
+		int approvedThisWeek,
+		int overdueItems)
 	{
 		var lines = new List<string>();
 		if (needsMyReview > 0)
@@ -116,19 +127,19 @@ public partial class DashboardPage : ContentPage
 			lines.Add($"• {needsMyReview} need your review (Pending Approvals).");
 		}
 
-		if (returned > 0)
+		if (revisionFollowUp > 0)
 		{
-			lines.Add($"• {returned} returned for revision — open details for remarks.");
+			lines.Add($"• {revisionFollowUp} are for revision follow-up.");
 		}
 
-		if (waitingOnOthers > 0)
+		if (overdueItems > 0)
 		{
-			lines.Add($"• {waitingOnOthers} with another reviewer.");
+			lines.Add($"• {overdueItems} are overdue and need attention.");
 		}
 
-		if (approved > 0)
+		if (approvedThisWeek > 0)
 		{
-			lines.Add($"• {approved} fully approved.");
+			lines.Add($"• {approvedThisWeek} approved this week.");
 		}
 
 		if (lines.Count == 0)
