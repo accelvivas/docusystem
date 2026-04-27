@@ -1,5 +1,4 @@
 using docusystem.Pages.Approvals;
-using docusystem.Pages.Forms;
 using docusystem.Pages.Login;
 using docusystem.Services;
 
@@ -22,8 +21,6 @@ public partial class AppShell : Shell
 		InitializeComponent();
 		// Contextual workflow pages (not flyout items): opened from Pending Approvals / Proposal Details.
 		Routing.RegisterRoute("proposaldetails", typeof(ProposalDetailsPage));
-		Routing.RegisterRoute("activityrequestform", typeof(ActivityRequestFormPage));
-		Routing.RegisterRoute("proposalform", typeof(ProposalFormPage));
 		Navigating += OnShellNavigating;
 		Navigated += OnShellNavigated;
 		Loaded += OnShellLoaded;
@@ -160,9 +157,7 @@ public partial class AppShell : Shell
 			"notifications",
 			"pendingapprovals",
 			"proposaldetails",
-			"revisionhistory",
-			"activityrequestform",
-			"proposalform"
+			"revisionhistory"
 		];
 
 		foreach (var r in routes)

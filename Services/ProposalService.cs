@@ -87,7 +87,8 @@ public sealed class ProposalService : IProposalService
 				return null;
 			}
 
-			return await response.Content.ReadFromJsonAsync<Proposal>(JsonOptions, cancellationToken).ConfigureAwait(false);
+			var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+			return ParseSingleProposal(json);
 		}
 		catch (HttpRequestException)
 		{
@@ -222,15 +223,94 @@ public sealed class ProposalService : IProposalService
 		var root = doc.RootElement;
 		if (root.ValueKind == JsonValueKind.Array)
 		{
-			return root.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+			var list = root.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+			DecorateFlowType(list);
+
+			return list;
 		}
 
 		if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
 		{
-			return data.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+			var list = data.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+			DecorateFlowType(list);
+
+			return list;
 		}
 
 		return [];
+	}
+
+	private static Proposal? ParseSingleProposal(string json)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return null;
+		}
+
+		using var doc = JsonDocument.Parse(json);
+		var root = doc.RootElement;
+
+		// Shape A: direct object proposal payload
+		if (TryDeserializeProposal(root, out var direct))
+		{
+			direct!.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(direct);
+			return direct;
+		}
+
+		// Shape B: { data: {...} } or { proposal: {...} }
+		if (root.ValueKind == JsonValueKind.Object)
+		{
+			if (root.TryGetProperty("data", out var data) && TryDeserializeProposal(data, out var fromData))
+			{
+				fromData!.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(fromData);
+				return fromData;
+			}
+
+			if (root.TryGetProperty("proposal", out var proposal) && TryDeserializeProposal(proposal, out var fromProposal))
+			{
+				fromProposal!.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(fromProposal);
+				return fromProposal;
+			}
+
+			// Shape C: { data: { proposal: {...} } }
+			if (root.TryGetProperty("data", out var nestedData) &&
+			    nestedData.ValueKind == JsonValueKind.Object &&
+			    nestedData.TryGetProperty("proposal", out var nestedProposal) &&
+			    TryDeserializeProposal(nestedProposal, out var nested))
+			{
+				nested!.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(nested);
+				return nested;
+			}
+		}
+
+		return null;
+	}
+
+	private static bool TryDeserializeProposal(JsonElement element, out Proposal? proposal)
+	{
+		proposal = null;
+		if (element.ValueKind != JsonValueKind.Object)
+		{
+			return false;
+		}
+
+		try
+		{
+			proposal = element.Deserialize<Proposal>(JsonOptions);
+			return proposal is not null;
+		}
+		catch (JsonException)
+		{
+			return false;
+		}
+	}
+
+	private static void DecorateFlowType(List<Proposal> list)
+	{
+		for (var i = 0; i < list.Count; i++)
+		{
+			list[i].ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(list[i]);
+		}
 	}
 
 	private static string? ExtractMessage(string json)

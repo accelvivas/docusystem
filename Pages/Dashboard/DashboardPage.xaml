@@ -10,11 +10,6 @@
 
             <Grid BackgroundColor="{StaticResource Primary}" Padding="20,22,20,28">
                 <VerticalStackLayout Spacing="6">
-                    <Label Text="Dashboard"
-                           FontSize="12"
-                           TextColor="White"
-                           Opacity="0.9"
-                           FontAttributes="Bold" />
                     <Label x:Name="UserNameLabel" Text=""
                            FontSize="22" FontAttributes="Bold" TextColor="White" />
                     <Border BackgroundColor="{StaticResource PrimaryMid}"

@@ -330,3 +330,4 @@ C:\Users\Gian Accel Hernandez\docusystem\bin\Debug\net10.0-maccatalyst\maccataly
 C:\Users\Gian Accel Hernandez\docusystem\bin\Debug\net10.0-maccatalyst\maccatalyst-x64\System.IdentityModel.Tokens.Jwt.dll
 C:\Users\Gian Accel Hernandez\docusystem\bin\Debug\net10.0-maccatalyst\maccatalyst-x64\System.Reactive.dll
 C:\Users\Gian Accel Hernandez\docusystem\bin\Debug\net10.0-maccatalyst\maccatalyst-x64\Websocket.Client.dll
+C:\Users\Gian Accel Hernandez\docusystem\obj\Debug\net10.0-maccatalyst\maccatalyst-x64\docusystem.sourcelink.json

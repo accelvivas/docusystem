@@ -4,22 +4,20 @@
         <name>docusystem</name>
     </assembly>
     <members>
-        <member name="T:docusystem.MainPage">
-            <summary>
-            MainPage - Entry point for NU Lipa Mobile App
-            
-            This is the shell-based root page that provides navigation.
-            The actual login interface is in Pages/Login/LoginPage.
-            </summary>
-        </member>
         <member name="T:docusystem.Models.ApprovalFlowType">
             <summary>Which approval chain applies for this proposal.</summary>
         </member>
         <member name="F:docusystem.Models.ApprovalFlowType.Academic">
-            <summary>Academic events: Adviser → … → Executive Director.</summary>
+            <summary>Curricular events: Adviser → Program Chair → Dean → … → Executive Director.</summary>
         </member>
         <member name="F:docusystem.Models.ApprovalFlowType.NonAcademic">
-            <summary>Non-academic: starts at SDAO Assistant (no Adviser / Chair / Dean).</summary>
+            <summary>Non-curricular: Adviser first, then direct to SDAO chain (Program Chair and Dean skipped).</summary>
+        </member>
+        <member name="P:docusystem.Models.ApprovalStep.ReviewedBy">
+            <summary>Name of the user who acted on this step (if available).</summary>
+        </member>
+        <member name="P:docusystem.Models.ApprovalStep.ActedAt">
+            <summary>When this step was acted on (approved, returned, etc.).</summary>
         </member>
         <member name="T:docusystem.Models.Proposal">
             <summary>
@@ -42,6 +40,18 @@
             <summary>
             Whether this proposal follows the Academic or Non-Academic signatory chain (map from API when available).
             </summary>
+        </member>
+        <member name="P:docusystem.Models.Proposal.ExtraData">
+            <summary>
+            Captures extra JSON fields from Laravel/Supabase responses so UI can consume new backend keys
+            without waiting for model schema updates.
+            </summary>
+        </member>
+        <member name="T:docusystem.Models.ProposalFieldReview">
+            <summary>Single field inside a proposal step that an approver marks as Passed or Needs Revision.</summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalFieldReview.RevisionInputVisible">
+            <summary>Runtime-only; tracks whether the revision note input is expanded.</summary>
         </member>
         <member name="T:docusystem.Models.RoleIdCatalog">
             <summary>
@@ -119,7 +129,14 @@
         </member>
         <member name="T:docusystem.Pages.Approvals.ProposalDetailsPage">
             <summary>
-            Proposal details and approval actions — calls <see cref="T:docusystem.Services.IApprovalService"/> (Laravel when implemented).
+            Proposal details with section-based field review and approval workflow.
+            Approver marks each field as Passed or Revision (with note), then submits.
+            </summary>
+        </member>
+        <member name="M:docusystem.Pages.Approvals.ProposalDetailsPage.RefreshComputedStatusBadge">
+            <summary>
+            UI-only computed status: when all fields are passed in both steps,
+            show Approved immediately (even before submit tap).
             </summary>
         </member>
         <member name="T:docusystem.Pages.Dashboard.DashboardPage">
@@ -135,22 +152,6 @@
         </member>
         <member name="M:docusystem.Pages.Dashboard.DashboardPage.OnViewApprovedClicked(System.Object,System.EventArgs)">
             <summary>Completed count card — same queue with All filter (fully approved may be off-queue depending on API).</summary>
-        </member>
-        <member name="T:docusystem.Pages.Forms.ActivityRequestFormPage">
-            <summary>
-            Activity Request Form — opened from Proposal Details for the proposal in <see cref="P:docusystem.Services.AppSessionService.SelectedProposal"/>.
-            </summary>
-        </member>
-        <member name="M:docusystem.Pages.Forms.ActivityRequestFormPage.OnSaveDraftClicked(System.Object,System.EventArgs)">
-            <summary>Placeholder — wire to local draft store / API later.</summary>
-        </member>
-        <member name="M:docusystem.Pages.Forms.ActivityRequestFormPage.OnSubmitClicked(System.Object,System.EventArgs)">
-            <summary>Placeholder validation only; no backend submit.</summary>
-        </member>
-        <member name="T:docusystem.Pages.Forms.ProposalFormPage">
-            <summary>
-            Full proposal form — opens from Proposal Details for the proposal in <see cref="P:docusystem.Services.AppSessionService.SelectedProposal"/>.
-            </summary>
         </member>
         <member name="T:docusystem.Pages.Login.LoginPage">
             <summary>
@@ -256,23 +257,11 @@
             Token and user snapshot are persisted via <see cref="T:docusystem.Services.SessionPersistenceService"/>.
             </summary>
         </member>
-        <member name="P:docusystem.Services.AppSessionService.NextProposalFormOpenBrowseOnly">
-            <summary>
-            When true, the next navigation to <c>proposalform</c> should open the form in browse-only mode (even if the user could edit).
-            Cleared by <see cref="M:docusystem.Services.AppSessionService.TryConsumeProposalFormBrowseOnly"/> after the form reads it.
-            </summary>
-        </member>
         <member name="P:docusystem.Services.AppSessionService.AccessToken">
             <summary>Bearer token from Laravel Sanctum / Passport — attached by <see cref="T:docusystem.Services.LaravelAuthDelegatingHandler"/>.</summary>
         </member>
         <member name="M:docusystem.Services.AppSessionService.SetAccessToken(System.String)">
             <summary>Sets only the bearer token (e.g. after loading from <see cref="T:Microsoft.Maui.Storage.SecureStorage"/>). Prefer <see cref="M:docusystem.Services.AppSessionService.SetCurrentUser(docusystem.Models.User,System.String)"/> when the user object is known.</summary>
-        </member>
-        <member name="M:docusystem.Services.AppSessionService.PrepareProposalFormNavigation(System.Boolean)">
-            <summary>Call before <c>GoToAsync("proposalform")</c>: <paramref name="browseOnly"/> true from &quot;View&quot;, false from &quot;Edit / Collaborate&quot;.</summary>
-        </member>
-        <member name="M:docusystem.Services.AppSessionService.TryConsumeProposalFormBrowseOnly">
-            <summary>Returns whether this open was &quot;view only&quot; and resets the flag.</summary>
         </member>
         <member name="T:docusystem.Services.AuthService">
             <summary>
@@ -397,11 +386,21 @@
         </member>
         <member name="T:docusystem.Services.ProposalWorkflowService">
             <summary>
-            Ordered signatories for Academic vs Non-Academic events (client-side until the API supplies a full chain).
+            Ordered signatories for Curricular vs Non-curricular events
+            (client-side until the API supplies a full chain).
             </summary>
         </member>
         <member name="F:docusystem.Services.ProposalWorkflowService.AllSignatoryRoles">
             <summary>Every role name that can appear as a signatory in either flow.</summary>
+        </member>
+        <member name="M:docusystem.Services.ProposalWorkflowService.InferFlowTypeFromText(System.String)">
+            <summary>
+            Infer proposal flow from backend wording (e.g. "Curricular" / "Non-curricular").
+            Defaults to Curricular when missing/unknown.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.ProposalWorkflowService.InferFlowTypeFromProposal(docusystem.Models.Proposal)">
+            <summary>Infer flow from known proposal extra-data keys.</summary>
         </member>
         <member name="M:docusystem.Services.ProposalWorkflowService.GetCompactWorkflowNote(docusystem.Models.ApprovalFlowType)">
             <summary>Single short line for proposal details UI (full order is on the approval steps list).</summary>

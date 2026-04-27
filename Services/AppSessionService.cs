@@ -11,12 +11,6 @@ public sealed class AppSessionService
 	public User? CurrentUser { get; private set; }
 	public Proposal? SelectedProposal { get; private set; }
 
-	/// <summary>
-	/// When true, the next navigation to <c>proposalform</c> should open the form in browse-only mode (even if the user could edit).
-	/// Cleared by <see cref="TryConsumeProposalFormBrowseOnly"/> after the form reads it.
-	/// </summary>
-	public bool NextProposalFormOpenBrowseOnly { get; private set; }
-
 	/// <summary>Bearer token from Laravel Sanctum / Passport — attached by <see cref="LaravelAuthDelegatingHandler"/>.</summary>
 	public string? AccessToken { get; private set; }
 
@@ -34,25 +28,10 @@ public sealed class AppSessionService
 		SelectedProposal = proposal;
 	}
 
-	/// <summary>Call before <c>GoToAsync("proposalform")</c>: <paramref name="browseOnly"/> true from &quot;View&quot;, false from &quot;Edit / Collaborate&quot;.</summary>
-	public void PrepareProposalFormNavigation(bool browseOnly)
-	{
-		NextProposalFormOpenBrowseOnly = browseOnly;
-	}
-
-	/// <summary>Returns whether this open was &quot;view only&quot; and resets the flag.</summary>
-	public bool TryConsumeProposalFormBrowseOnly()
-	{
-		var v = NextProposalFormOpenBrowseOnly;
-		NextProposalFormOpenBrowseOnly = false;
-		return v;
-	}
-
 	public void ClearSession()
 	{
 		CurrentUser = null;
 		SelectedProposal = null;
-		NextProposalFormOpenBrowseOnly = false;
 		AccessToken = null;
 	}
 }

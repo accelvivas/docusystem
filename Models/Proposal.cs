@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.Json;
 
 namespace docusystem.Models;
 
@@ -61,4 +62,11 @@ public class Proposal
 	/// </summary>
 	[JsonIgnore]
 	public ApprovalFlowType ApprovalFlowType { get; set; } = ApprovalFlowType.Academic;
+
+	/// <summary>
+	/// Captures extra JSON fields from Laravel/Supabase responses so UI can consume new backend keys
+	/// without waiting for model schema updates.
+	/// </summary>
+	[JsonExtensionData]
+	public Dictionary<string, JsonElement>? ExtraData { get; set; }
 }

@@ -4,7 +4,6 @@ using docusystem.Pages.Dashboard;
 using docusystem.Pages.Notifications;
 using docusystem.Pages.Approvals;
 using docusystem.Pages.RevisionHistory;
-using docusystem.Pages.Forms;
 using docusystem.Services;
 
 namespace docusystem;
@@ -60,8 +59,6 @@ public static class MauiProgram
 		builder.Services.AddTransient<PendingApprovalsPage>();
 		builder.Services.AddTransient<ProposalDetailsPage>();
 		builder.Services.AddTransient<RevisionHistoryPage>();
-		builder.Services.AddTransient<ActivityRequestFormPage>();
-		builder.Services.AddTransient<ProposalFormPage>();
 
 #if DEBUG
 		builder.Logging.AddDebug();

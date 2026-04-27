@@ -378,4 +378,28 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 
 		DisplayProposals(filtered);
 	}
+
+	private async void OnOpenMockProposalClicked(object? sender, EventArgs e)
+	{
+		var mock = new Proposal
+		{
+			Id = 999001,
+			Title = "DOTA Tournament",
+			OrganizationName = "Hacker Team",
+			SubmittedBy = "Alcantara Kid",
+			CurrentStage = "Adviser",
+			Status = "Under Review",
+			ActivityDate = DateTime.Today.AddDays(3),
+			Venue = "Gym",
+			Budget = 100000m,
+			Description = "Campus-wide e-sports event focused on teamwork, strategy, and student engagement.",
+			SubmittedDate = DateTime.Today.AddDays(-1),
+			CanApprove = true,
+			CanEdit = false,
+			ApprovalFlowType = ApprovalFlowType.Academic
+		};
+
+		_session.SetSelectedProposal(mock);
+		await Shell.Current.GoToAsync("proposaldetails");
+	}
 }

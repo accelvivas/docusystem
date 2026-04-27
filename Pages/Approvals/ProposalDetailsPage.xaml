@@ -2,378 +2,332 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="docusystem.Pages.Approvals.ProposalDetailsPage"
-             BackgroundColor="{StaticResource White}"
+             BackgroundColor="#F4F6FA"
              Title="Review proposal">
 
     <ScrollView>
         <VerticalStackLayout Spacing="0">
 
-            <!-- Navy hero -->
-            <Grid BackgroundColor="{StaticResource Primary}" Padding="18,18,18,22">
-                <VerticalStackLayout Spacing="8">
+            <!-- Navy header -->
+            <Grid BackgroundColor="{StaticResource Primary}" Padding="18,16,18,20">
+                <VerticalStackLayout Spacing="6">
                     <Label x:Name="MyRoleLabel"
                            Text="Role: —"
-                           FontSize="12"
-                           FontAttributes="Bold"
-                           TextColor="White" />
+                           FontSize="11" FontAttributes="Bold"
+                           TextColor="White" Opacity="0.85" />
                     <Label x:Name="TitleLabel"
-                           Text="Proposal Title"
-                           FontSize="19" FontAttributes="Bold"
-                           TextColor="White"
-                           LineBreakMode="WordWrap" />
+                           Text="Proposal"
+                           FontSize="18" FontAttributes="Bold"
+                           TextColor="White" LineBreakMode="WordWrap" />
                     <Label x:Name="OrganizationLabel"
-                           Text="Organization Name"
-                           FontSize="12" TextColor="White"
-                           Opacity="0.9" />
-                    <Label x:Name="PurposeHintLabel"
-                           Text=""
-                           FontSize="12"
-                           TextColor="White"
-                           Opacity="0.92"
-                           LineBreakMode="WordWrap"
-                           Margin="0,2,0,0" />
-                    <HorizontalStackLayout Spacing="8" Margin="0,6,0,0">
+                           Text="Organization"
+                           FontSize="12" TextColor="White" Opacity="0.9" />
+                    <HorizontalStackLayout Spacing="8" Margin="0,4,0,0">
                         <Border x:Name="StatusBadgeBorder"
                                 BackgroundColor="White"
                                 StrokeShape="RoundRectangle 8"
-                                Stroke="{StaticResource NavyLine}"
-                                StrokeThickness="1"
+                                Stroke="Transparent"
                                 Padding="10,5">
-                            <Label x:Name="StatusLabel" Text="Status"
+                            <Label x:Name="StatusLabel" Text="Pending"
                                    FontSize="11" FontAttributes="Bold"
                                    TextColor="{StaticResource Primary}" />
                         </Border>
-                        <Border x:Name="StageBadgeBorder"
-                                BackgroundColor="{StaticResource PrimaryMid}"
+                        <Border BackgroundColor="{StaticResource PrimaryMid}"
                                 StrokeShape="RoundRectangle 8"
                                 Stroke="Transparent"
                                 Padding="10,5">
-                            <Label x:Name="StageHeroLabel" Text="Current stage: —"
-                                   FontSize="11" FontAttributes="Bold"
-                                   TextColor="White" />
+                            <Label x:Name="StageHeroLabel" Text="Stage: —"
+                                   FontSize="11" FontAttributes="Bold" TextColor="White" />
                         </Border>
                     </HorizontalStackLayout>
-                    <Label x:Name="SubmittedByLabel" Text="Submitted by: —"
-                           FontSize="11" TextColor="White"
-                           Opacity="0.88"
-                           LineBreakMode="WordWrap" />
-                    <Border BackgroundColor="{StaticResource PrimaryMid}"
-                            Stroke="Transparent"
-                            StrokeShape="RoundRectangle 10"
-                            Padding="12,10"
-                            Margin="0,4,0,0">
-                        <VerticalStackLayout Spacing="4">
-                            <Label x:Name="ReviewerContextLabel"
-                                   Text="Current stage: —"
-                                   FontSize="12" FontAttributes="Bold"
-                                   TextColor="White"
-                                   LineBreakMode="WordWrap" />
-                            <Label x:Name="YourAccessLabel"
-                                   Text="—"
-                                   FontSize="11"
-                                   TextColor="White"
-                                   Opacity="0.92"
-                                   LineBreakMode="WordWrap" />
-                        </VerticalStackLayout>
-                    </Border>
                 </VerticalStackLayout>
             </Grid>
 
-            <!-- Top summary card (white + navy frame) -->
-            <Border BackgroundColor="White"
-                    Margin="16,14,16,0"
-                    Stroke="{StaticResource NavyLine}"
-                    StrokeThickness="2"
-                    StrokeShape="RoundRectangle 14"
-                    Padding="14,12">
-                <VerticalStackLayout Spacing="6">
-                    <Label x:Name="SummaryLineLabel"
-                           Text=""
-                           FontSize="12"
-                           TextColor="{StaticResource PrimaryDarkText}"
-                           LineBreakMode="WordWrap" />
-                    <Label x:Name="LastUpdatedLabel"
-                           Text=""
-                           FontSize="11"
-                           TextColor="{StaticResource Primary}"
-                           Opacity="0.85"
-                           LineBreakMode="WordWrap" />
-                </VerticalStackLayout>
-            </Border>
+            <VerticalStackLayout Padding="14,14,14,28" Spacing="14">
 
-            <!-- Event type and approval chain -->
-            <Border BackgroundColor="{StaticResource PrimaryLight}"
-                    Margin="16,10,16,0"
-                    Stroke="{StaticResource Primary}"
-                    StrokeThickness="1"
-                    StrokeShape="RoundRectangle 12"
-                    Padding="14,12">
-                <VerticalStackLayout Spacing="6">
-                    <Label Text="Workflow"
-                           FontSize="12" FontAttributes="Bold"
-                           TextColor="{StaticResource Primary}" />
-                    <Label x:Name="EventTypeLabel"
-                           FontSize="13"
-                           TextColor="{StaticResource PrimaryDarkText}"
-                           LineBreakMode="WordWrap" />
-                    <Label x:Name="FlowHelperLabel"
-                           FontSize="11"
-                           TextColor="{StaticResource Primary}"
-                           Opacity="0.88"
-                           LineBreakMode="WordWrap" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Digital Approval Stamp -->
-            <Border x:Name="DigitalApprovalBanner"
-                    IsVisible="False"
-                    BackgroundColor="{StaticResource Primary}"
-                    Stroke="{StaticResource NavyLine}" StrokeThickness="2"
-                    Margin="16,12,16,0"
-                    StrokeShape="RoundRectangle 14"
-                    Padding="18,16">
-                <VerticalStackLayout Spacing="8">
-                    <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
-                        <Border BackgroundColor="White"
-                                StrokeShape="RoundRectangle 20"
-                                Stroke="Transparent"
-                                Padding="8,6"
-                                VerticalOptions="Center">
-                            <Label Text="✓" FontSize="14" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" />
-                        </Border>
-                        <VerticalStackLayout Spacing="1" VerticalOptions="Center">
-                            <Label Text="FULLY APPROVED"
-                                   FontSize="13" FontAttributes="Bold"
-                                   TextColor="White"
-                                   CharacterSpacing="1" />
-                            <Label Text="All required sign-offs are complete."
-                                   FontSize="11" TextColor="White"
-                                   Opacity="0.9" />
+                <!-- Summary card (2-col grid) -->
+                <Border BackgroundColor="White"
+                        Stroke="#E0E4ED"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 14"
+                        Padding="14,12">
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                        <!-- Row 0 -->
+                        <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="2">
+                            <Label Text="DOCUMENT TYPE" FontSize="9" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" Opacity="0.6" />
+                            <Label x:Name="DocTypeLabel" Text="Activity Proposal"
+                                   FontSize="13" TextColor="#1A2340" />
                         </VerticalStackLayout>
-                    </HorizontalStackLayout>
-                    <BoxView Color="{StaticResource NavyLine}" HeightRequest="1" Opacity="0.5" Margin="0,2,0,2" />
-                    <Label Text="Recorded in the student organization governance system."
-                           FontSize="12" TextColor="White" Opacity="0.9"
-                           LineBreakMode="WordWrap" />
-                    <HorizontalStackLayout Spacing="6" Margin="0,4,0,0">
-                        <Label x:Name="ApprovalTimestampLabel"
-                               Text="Approved on —"
-                               FontSize="11" FontAttributes="Bold"
-                               TextColor="White"
-                               Opacity="0.92"
+                        <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="2">
+                            <Label Text="ORGANIZATION" FontSize="9" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" Opacity="0.6" />
+                            <Label x:Name="SummaryOrgLabel" Text="—"
+                                   FontSize="13" TextColor="#1A2340" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                        <!-- Row 1 -->
+                        <VerticalStackLayout Grid.Row="1" Grid.Column="0" Spacing="2">
+                            <Label Text="SUBMITTED BY" FontSize="9" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" Opacity="0.6" />
+                            <Label x:Name="SummarySubmittedByLabel" Text="—"
+                                   FontSize="13" TextColor="#1A2340" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="1" Grid.Column="1" Spacing="2">
+                            <Label Text="SUBMITTED ON" FontSize="9" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" Opacity="0.6" />
+                            <Label x:Name="SummarySubmittedOnLabel" Text="—"
+                                   FontSize="13" TextColor="#1A2340" />
+                        </VerticalStackLayout>
+                        <!-- Row 2 -->
+                        <VerticalStackLayout Grid.Row="2" Grid.Column="0" Spacing="2">
+                            <Label Text="CURRENT STEP" FontSize="9" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" Opacity="0.6" />
+                            <Label x:Name="SummaryCurrentStepLabel" Text="—"
+                                   FontSize="13" TextColor="#1A2340" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="2" Grid.Column="1" Spacing="2">
+                            <Label Text="ACTIVITY TITLE" FontSize="9" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" Opacity="0.6" />
+                            <Label x:Name="SummaryTitleLabel" Text="—"
+                                   FontSize="13" TextColor="#1A2340" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                        <!-- Row 3 -->
+                        <VerticalStackLayout Grid.Row="3" Grid.Column="0" Spacing="2">
+                            <Label Text="PROPOSED DATES" FontSize="9" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" Opacity="0.6" />
+                            <Label x:Name="SummaryDatesLabel" Text="—"
+                                   FontSize="13" TextColor="#1A2340" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="3" Grid.Column="1" Spacing="2">
+                            <Label Text="VENUE" FontSize="9" FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}" Opacity="0.6" />
+                            <Label x:Name="SummaryVenueLabel" Text="—"
+                                   FontSize="13" TextColor="#1A2340" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Border>
+
+                <!-- Field review progress -->
+                <Border BackgroundColor="White"
+                        Stroke="#E0E4ED"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 12"
+                        Padding="14,12">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Field review progress"
+                               FontSize="12" FontAttributes="Bold"
+                               TextColor="#1A2340" />
+                        <HorizontalStackLayout Spacing="8">
+                            <Border BackgroundColor="#E8F5EF"
+                                    StrokeShape="RoundRectangle 20"
+                                    Stroke="#3CB371"
+                                    StrokeThickness="1"
+                                    Padding="10,4">
+                                <Label x:Name="VerifiedCountLabel" Text="Verified: 0"
+                                       FontSize="11" FontAttributes="Bold"
+                                       TextColor="#1A7A45" />
+                            </Border>
+                            <Border BackgroundColor="#FFF4E6"
+                                    StrokeShape="RoundRectangle 20"
+                                    Stroke="#E08030"
+                                    StrokeThickness="1"
+                                    Padding="10,4">
+                                <Label x:Name="RevisionCountLabel" Text="Revision: 0"
+                                       FontSize="11" FontAttributes="Bold"
+                                       TextColor="#C06000" />
+                            </Border>
+                            <Border BackgroundColor="#F4F6FA"
+                                    StrokeShape="RoundRectangle 20"
+                                    Stroke="#C0C8D8"
+                                    StrokeThickness="1"
+                                    Padding="10,4">
+                                <Label x:Name="PendingCountLabel" Text="Pending: 2"
+                                       FontSize="11" FontAttributes="Bold"
+                                       TextColor="#5A6A8A" />
+                            </Border>
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Section 1: Submission overview -->
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0"
+                               Text="Step 1: Activity Request Form"
+                               FontSize="14" FontAttributes="Bold"
+                               TextColor="#1A2340"
                                VerticalTextAlignment="Center" />
-                    </HorizontalStackLayout>
+                        <Border Grid.Column="1"
+                                x:Name="Step1Badge"
+                                BackgroundColor="#F4F6FA"
+                                StrokeShape="RoundRectangle 20"
+                                Stroke="#E0E4ED"
+                                Padding="10,4">
+                            <Label x:Name="Step1BadgeLabel" Text="Pending"
+                                   FontSize="11" FontAttributes="Bold"
+                                   TextColor="#5A6A8A" />
+                        </Border>
+                    </Grid>
+                    <VerticalStackLayout x:Name="Step1FieldsStack" Spacing="8" />
                 </VerticalStackLayout>
-            </Border>
 
-            <VerticalStackLayout Padding="16,16,16,22" Spacing="16">
+                <!-- Section 2: Proposal Submission -->
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0"
+                               Text="Step 2: Proposal Submission"
+                               FontSize="14" FontAttributes="Bold"
+                               TextColor="#1A2340"
+                               VerticalTextAlignment="Center" />
+                        <Border Grid.Column="1"
+                                x:Name="Step2Badge"
+                                BackgroundColor="#F4F6FA"
+                                StrokeShape="RoundRectangle 20"
+                                Stroke="#E0E4ED"
+                                Padding="10,4">
+                            <Label x:Name="Step2BadgeLabel" Text="Pending"
+                                   FontSize="11" FontAttributes="Bold"
+                                   TextColor="#5A6A8A" />
+                        </Border>
+                    </Grid>
+                    <VerticalStackLayout x:Name="Step2FieldsStack" Spacing="8" />
+                </VerticalStackLayout>
 
-                <!-- Returned remarks (high visibility) -->
+                <!-- Revision / approval summary -->
+                <Border x:Name="ReviewSummaryCard"
+                        BackgroundColor="#E8F5EF"
+                        Stroke="#A8D8BA"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 12"
+                        Padding="14,12">
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="REVISION SUMMARY"
+                               FontSize="10" FontAttributes="Bold"
+                               TextColor="#1A7A45" />
+                        <Label x:Name="ReviewSummaryLabel"
+                               Text="Review all fields to see summary."
+                               FontSize="12"
+                               TextColor="#1A4030"
+                               LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Submit Field Review button (approver only) -->
+                <Button x:Name="SubmitFieldReviewBtn"
+                        Text="Submit Field Review"
+                        BackgroundColor="{StaticResource Primary}"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        FontSize="14"
+                        CornerRadius="12"
+                        Padding="16,14"
+                        IsVisible="False"
+                        Clicked="OnSubmitFieldReviewClicked" />
+
+                <!-- Approval workflow -->
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Approval workflow"
+                           FontSize="14" FontAttributes="Bold"
+                           TextColor="#1A2340" />
+
+                    <!-- Horizontal workflow track -->
+                    <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                        <HorizontalStackLayout x:Name="WorkflowTrackStack"
+                                               Spacing="0"
+                                               Padding="2,6,2,6" />
+                    </ScrollView>
+
+                    <!-- Selected stage detail card -->
+                    <Border x:Name="SelectedStageCard"
+                            BackgroundColor="White"
+                            Stroke="#E0E4ED"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 12"
+                            Padding="14,12">
+                        <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" RowSpacing="10" ColumnSpacing="8">
+                            <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="2">
+                                <Label Text="SELECTED STAGE" FontSize="9" FontAttributes="Bold"
+                                       TextColor="{StaticResource Primary}" Opacity="0.6" />
+                                <Label x:Name="SelectedStageLabel" Text="—"
+                                       FontSize="13" FontAttributes="Bold" TextColor="#1A2340" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Row="1" Grid.Column="0" Spacing="2">
+                                <Label Text="STATUS" FontSize="9" FontAttributes="Bold"
+                                       TextColor="{StaticResource Primary}" Opacity="0.6" />
+                                <Label x:Name="SelectedStageStatusLabel" Text="—"
+                                       FontSize="13" TextColor="#1A2340" FontAttributes="Bold" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Row="1" Grid.Column="1" Spacing="2">
+                                <Label Text="REVIEWER" FontSize="9" FontAttributes="Bold"
+                                       TextColor="{StaticResource Primary}" Opacity="0.6" />
+                                <Label x:Name="SelectedStageReviewerLabel" Text="—"
+                                       FontSize="13" TextColor="#1A2340" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Grid.Row="1" Grid.Column="2" Spacing="2">
+                                <Label Text="ACTED AT" FontSize="9" FontAttributes="Bold"
+                                       TextColor="{StaticResource Primary}" Opacity="0.6" />
+                                <Label x:Name="SelectedStageActedAtLabel" Text="—"
+                                       FontSize="13" TextColor="#1A2340" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Border>
+                </VerticalStackLayout>
+
+                <!-- Recent workflow logs -->
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Recent workflow logs"
+                           FontSize="13" FontAttributes="Bold"
+                           TextColor="#1A2340" />
+                    <VerticalStackLayout x:Name="WorkflowLogsStack" Spacing="4" />
+                </VerticalStackLayout>
+
+                <!-- Returned remarks (visible when returned) -->
                 <Border x:Name="ReturnedRemarksPanel"
                         IsVisible="False"
-                        BackgroundColor="{StaticResource PrimaryLight}"
-                        Stroke="{StaticResource Primary}"
-                        StrokeThickness="2"
+                        BackgroundColor="#FFF0F0"
+                        Stroke="#E08080"
+                        StrokeThickness="1"
                         StrokeShape="RoundRectangle 12"
                         Padding="14,12">
                     <VerticalStackLayout Spacing="6">
                         <Label Text="Returned — reviewer remarks"
-                               FontSize="13" FontAttributes="Bold"
-                               TextColor="{StaticResource Primary}" />
+                               FontSize="12" FontAttributes="Bold"
+                               TextColor="#A00000" />
                         <Label x:Name="ReturnedRemarksBodyLabel"
-                               FontSize="13"
-                               TextColor="{StaticResource PrimaryDarkText}"
+                               FontSize="13" TextColor="#3A1010"
                                LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
 
-                <!-- What you can do now -->
-                <Border BackgroundColor="{StaticResource PrimaryLight}"
-                        Stroke="{StaticResource Primary}"
-                        StrokeThickness="1"
-                        StrokeShape="RoundRectangle 12"
-                        Padding="14,12">
+                <!-- Resubmit (RSO President only, when returned) -->
+                <Button x:Name="ResubmitBtn"
+                        Text="Resubmit for review"
+                        BackgroundColor="White"
+                        TextColor="{StaticResource Primary}"
+                        BorderColor="{StaticResource Primary}"
+                        BorderWidth="2"
+                        FontAttributes="Bold"
+                        CornerRadius="12"
+                        Padding="16,14"
+                        IsVisible="False"
+                        Clicked="OnResubmitForReviewClicked" />
+
+                <!-- Fully approved banner -->
+                <Border x:Name="DigitalApprovalBanner"
+                        IsVisible="False"
+                        BackgroundColor="{StaticResource Primary}"
+                        StrokeShape="RoundRectangle 14"
+                        Stroke="Transparent"
+                        Padding="18,16">
                     <VerticalStackLayout Spacing="6">
-                        <Label Text="Next steps"
-                               FontSize="13" FontAttributes="Bold"
-                               TextColor="{StaticResource Primary}" />
-                        <Label x:Name="WhatNextLabel"
-                               Text=""
-                               FontSize="12"
-                               TextColor="{StaticResource PrimaryDarkText}"
-                               LineBreakMode="WordWrap" />
-                    </VerticalStackLayout>
-                </Border>
-
-                <!-- Latest changes (summary before full history) -->
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Recent changes"
-                               Style="{StaticResource SectionTitle}" />
-                        <Label x:Name="LatestChangesLabel"
-                               FontSize="12"
-                               TextColor="{StaticResource PrimaryDarkText}"
-                               LineBreakMode="WordWrap" />
-                    </VerticalStackLayout>
-                </Border>
-
-                <!-- Attachments placeholder -->
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="6">
-                        <Label Text="Attachments"
-                               Style="{StaticResource SectionTitle}" />
-                        <Label x:Name="AttachmentsHintLabel"
-                               FontSize="12"
-                               TextColor="{StaticResource PrimaryDarkText}"
-                               LineBreakMode="WordWrap" />
-                    </VerticalStackLayout>
-                </Border>
-
-                <!-- Proposal snapshot -->
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="0">
-                        <Label Text="Proposal snapshot"
-                               Style="{StaticResource SectionTitle}"
-                               Margin="0,0,0,12" />
-
-                        <VerticalStackLayout Spacing="2" Margin="0,0,0,10">
-                            <Label Text="ACTIVITY DATE" FontSize="10" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" Opacity="0.65" />
-                            <Label x:Name="ActivityDateLabel" Text="—"
-                                   FontSize="14" TextColor="{StaticResource PrimaryDarkText}" />
-                        </VerticalStackLayout>
-                        <BoxView Color="#55003087" HeightRequest="1" Margin="0,0,0,10" />
-
-                        <VerticalStackLayout Spacing="2" Margin="0,0,0,10">
-                            <Label Text="VENUE" FontSize="10" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" Opacity="0.65" />
-                            <Label x:Name="VenueLabel" Text="—"
-                                   FontSize="14" TextColor="{StaticResource PrimaryDarkText}" />
-                        </VerticalStackLayout>
-                        <BoxView Color="#55003087" HeightRequest="1" Margin="0,0,0,10" />
-
-                        <VerticalStackLayout Spacing="2" Margin="0,0,0,10">
-                            <Label Text="BUDGET" FontSize="10" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" Opacity="0.65" />
-                            <Label x:Name="BudgetLabel" Text="—"
-                                   FontSize="14" TextColor="{StaticResource PrimaryDarkText}" />
-                        </VerticalStackLayout>
-                        <BoxView Color="#55003087" HeightRequest="1" Margin="0,0,0,10" />
-
-                        <VerticalStackLayout Spacing="2">
-                            <Label Text="CURRENT STAGE (WORKFLOW)" FontSize="10" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" Opacity="0.65" />
-                            <Label x:Name="CurrentStageLabel" Text="—"
-                                   FontSize="14" TextColor="{StaticResource PrimaryDarkText}" />
-                        </VerticalStackLayout>
-                    </VerticalStackLayout>
-                </Border>
-
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Description" Style="{StaticResource SectionTitle}" />
-                        <Label x:Name="DescriptionLabel" Text="—"
-                               FontSize="13" TextColor="{StaticResource PrimaryDarkText}"
-                               LineBreakMode="WordWrap" />
-                    </VerticalStackLayout>
-                </Border>
-
-                <Border BackgroundColor="{StaticResource PrimaryLight}"
-                        Stroke="{StaticResource NavyLine}"
-                        StrokeThickness="1"
-                        StrokeShape="RoundRectangle 10" Padding="12">
-                    <Label x:Name="EditRuleMessageLabel"
-                           Text=""
-                           FontSize="12" TextColor="{StaticResource PrimaryDarkText}"
-                           LineBreakMode="WordWrap" />
-                </Border>
-
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Remarks for reviewers" Style="{StaticResource SectionTitle}" />
-                        <Border Style="{StaticResource InputBorder}" Padding="10">
-                            <Editor x:Name="RemarksEntry"
-                                    Placeholder="Optional — used when returning for revision"
-                                    MinimumHeightRequest="70"
-                                    BackgroundColor="Transparent"
-                                    TextColor="{StaticResource PrimaryDarkText}" />
-                        </Border>
-                    </VerticalStackLayout>
-                </Border>
-
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="10">
-                        <Label Text="Approval progress" Style="{StaticResource SectionTitle}" />
-                        <VerticalStackLayout x:Name="ApprovalStepsStack" Spacing="8" />
-                    </VerticalStackLayout>
-                </Border>
-
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="14">
-                        <VerticalStackLayout Spacing="4">
-                            <Label Text="Actions" Style="{StaticResource SectionTitle}" />
-                        </VerticalStackLayout>
-
-                        <VerticalStackLayout Spacing="8">
-                            <Label Text="Forms"
-                                   FontSize="13" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" />
-                            <Button x:Name="ActivityRequestBtn"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Text="Open activity request form"
-                                    Clicked="OnViewActivityRequestClicked" />
-                            <Button x:Name="ProposalFormViewBtn"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Text="Open proposal form (read-only)"
-                                    Clicked="OnViewProposalFormClicked" />
-                            <Button x:Name="EditBtn"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Text="Edit or collaborate on proposal"
-                                    Clicked="OnEditClicked" />
-                            <Button x:Name="ResubmitBtn"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Text="Resubmit for review (RSO only)"
-                                    IsVisible="False"
-                                    Clicked="OnResubmitForReviewClicked" />
-                            <Button x:Name="HistoryBtn"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Text="Open full revision history"
-                                    Clicked="OnViewHistoryClicked" />
-                        </VerticalStackLayout>
-
-                        <BoxView HeightRequest="1" Color="#66003087" />
-
-                        <VerticalStackLayout Spacing="8">
-                            <Label Text="Sign-off"
-                                   FontSize="13" FontAttributes="Bold"
-                                   TextColor="{StaticResource Primary}" />
-                            <Label x:Name="SignOffLockedHintLabel"
-                                   IsVisible="False"
-                                   FontSize="11"
-                                   TextColor="{StaticResource PrimaryDarkText}"
-                                   LineBreakMode="WordWrap" />
-                            <Button x:Name="ApproveBtn"
-                                    Text="Approve at this stage"
-                                    BackgroundColor="{StaticResource Primary}"
-                                    TextColor="White"
-                                    BorderColor="Transparent"
-                                    BorderWidth="0"
-                                    FontAttributes="Bold"
-                                    CornerRadius="12"
-                                    Padding="16,14"
-                                    Clicked="OnApproveClicked" />
-                            <Button x:Name="ReturnBtn"
-                                    Text="Return for revision"
-                                    BackgroundColor="White"
-                                    TextColor="{StaticResource Primary}"
-                                    BorderColor="{StaticResource Primary}"
-                                    BorderWidth="2"
-                                    FontAttributes="Bold"
-                                    CornerRadius="12"
-                                    Padding="16,14"
-                                    Clicked="OnReturnClicked" />
-                        </VerticalStackLayout>
+                        <Label Text="✓  FULLY APPROVED"
+                               FontSize="14" FontAttributes="Bold"
+                               TextColor="White" />
+                        <Label Text="All required sign-offs are complete."
+                               FontSize="12" TextColor="White" Opacity="0.9" />
+                        <Label x:Name="ApprovalTimestampLabel"
+                               Text="—"
+                               FontSize="11" TextColor="White" Opacity="0.85" />
                     </VerticalStackLayout>
                 </Border>
 

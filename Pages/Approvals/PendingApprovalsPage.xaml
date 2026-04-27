@@ -53,6 +53,17 @@
                                 ClassId="Returned" />
                     </HorizontalStackLayout>
                 </ScrollView>
+
+                <Button Text="Open mock proposal preview"
+                        FontSize="12"
+                        FontAttributes="Bold"
+                        TextColor="{StaticResource Primary}"
+                        BackgroundColor="White"
+                        BorderColor="{StaticResource Primary}"
+                        BorderWidth="1.5"
+                        CornerRadius="10"
+                        Padding="0,10"
+                        Clicked="OnOpenMockProposalClicked" />
             </VerticalStackLayout>
         </Border>
 
