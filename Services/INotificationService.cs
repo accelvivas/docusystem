@@ -7,9 +7,12 @@ namespace docusystem.Services;
 /// </summary>
 public interface INotificationService
 {
-	/// <summary>TODO: GET /api/notifications — server scopes to authenticated user.</summary>
+	/// <summary>GET /api/notifications — server scopes to authenticated user.</summary>
 	Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync(CancellationToken cancellationToken = default);
 
-	/// <summary>TODO: PATCH /api/notifications/{id}/read</summary>
+	/// <summary>PATCH /api/notifications/{id}/read — marks a single notification as read.</summary>
 	Task MarkAsReadAsync(int notificationId, CancellationToken cancellationToken = default);
+
+	/// <summary>PATCH /api/notifications/read-all — marks every notification for the user as read.</summary>
+	Task MarkAllAsReadAsync(CancellationToken cancellationToken = default);
 }

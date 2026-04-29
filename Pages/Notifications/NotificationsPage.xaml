@@ -5,7 +5,7 @@
              BackgroundColor="{StaticResource White}"
              Title="Notifications">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
 
         <!-- Navy Page Header -->
         <Grid Grid.Row="0" BackgroundColor="#003087" Padding="18,16,18,20">
@@ -50,10 +50,26 @@
             </ScrollView>
         </Border>
 
+        <VerticalStackLayout Grid.Row="2"
+                             Padding="16,8,16,0"
+                             Spacing="6">
+            <ActivityIndicator x:Name="LoadingIndicator"
+                               IsVisible="False"
+                               IsRunning="False"
+                               Color="{StaticResource Primary}"
+                               HorizontalOptions="Center" />
+            <Label x:Name="ErrorStateLabel"
+                   IsVisible="False"
+                   FontSize="12"
+                   TextColor="{StaticResource Primary}"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap" />
+        </VerticalStackLayout>
+
         <!-- Notifications List -->
         <RefreshView
             x:Name="NotificationsRefresh"
-            Grid.Row="2"
+            Grid.Row="3"
             RefreshColor="#003087"
             Refreshing="OnNotificationsRefreshing">
             <ScrollView>

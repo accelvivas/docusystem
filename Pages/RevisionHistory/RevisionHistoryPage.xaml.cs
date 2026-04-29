@@ -22,7 +22,20 @@ public partial class RevisionHistoryPage : ContentPage
 	protected override async void OnAppearing()
 	{
 		base.OnAppearing();
-		await LoadRevisionHistoryAsync();
+		try
+		{
+			SetLoadingState(true);
+			RevisionErrorStateLabel.IsVisible = false;
+			await LoadRevisionHistoryAsync();
+			SetLoadingState(false);
+		}
+		catch (Exception ex)
+		{
+			System.Diagnostics.Debug.WriteLine(ex);
+			SetLoadingState(false);
+			RevisionErrorStateLabel.Text = "Could not load revision history right now. Please try again.";
+			RevisionErrorStateLabel.IsVisible = true;
+		}
 	}
 
 	private async Task LoadRevisionHistoryAsync()
@@ -81,13 +94,99 @@ public partial class RevisionHistoryPage : ContentPage
 			Margin = new Thickness(12, 24, 12, 0)
 		};
 
-	private Frame CreateRevisionCard(RevisionLog revision)
+	private Border CreateRevisionCard(RevisionLog revision)
 	{
-		return new Frame
+		var actorRow = new Grid
 		{
-			CornerRadius = 14,
-			BorderColor = Ui.NavyLine,
-			HasShadow = false,
+			ColumnDefinitions =
+			{
+				new ColumnDefinition { Width = GridLength.Star },
+				new ColumnDefinition { Width = GridLength.Auto }
+			},
+			Children =
+			{
+				new VerticalStackLayout
+				{
+					Spacing = 2,
+					Children =
+					{
+						new Label
+						{
+							Text = revision.EditedBy,
+							FontSize = 13,
+							FontAttributes = FontAttributes.Bold,
+							TextColor = Ui.Navy
+						},
+						new Label
+						{
+							Text = revision.Role,
+							FontSize = 11,
+							TextColor = Ui.NavyMutedText
+						}
+					}
+				},
+				new Label
+				{
+					Text = FormatDateTime(revision.Timestamp),
+					FontSize = 10,
+					TextColor = Ui.NavyMutedText,
+					VerticalOptions = LayoutOptions.Start
+				}.Assign(gridColumn: 1)
+			}
+		};
+
+		var fieldBadge = new Border
+		{
+			BackgroundColor = Ui.NavyWash,
+			Stroke = Colors.Transparent,
+			StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 6 },
+			StrokeThickness = 0,
+			Padding = new Thickness(8, 3),
+			HorizontalOptions = LayoutOptions.Start,
+			Content = new Label
+			{
+				Text = revision.FieldChanged,
+				FontSize = 11,
+				FontAttributes = FontAttributes.Bold,
+				TextColor = Ui.Navy
+			}
+		};
+
+		var notePanel = new Border
+		{
+			StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 8 },
+			Padding = new Thickness(10, 8),
+			Stroke = Ui.NavyLine,
+			BackgroundColor = Ui.White,
+			StrokeThickness = 1,
+			Content = new VerticalStackLayout
+			{
+				Spacing = 2,
+				Children =
+				{
+					new Label
+					{
+						Text = "REVISION NOTE",
+						FontSize = 9,
+						TextColor = Ui.Navy,
+						FontAttributes = FontAttributes.Bold
+					},
+					new Label
+					{
+						Text = string.IsNullOrWhiteSpace(revision.NewValue) ? "(no note provided)" : revision.NewValue,
+						FontSize = 12,
+						TextColor = Ui.Navy,
+						LineBreakMode = LineBreakMode.WordWrap
+					}
+				}
+			}
+		};
+
+		return new Border
+		{
+			StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 14 },
+			Stroke = Ui.NavyLine,
+			StrokeThickness = 1,
 			Padding = 14,
 			BackgroundColor = Ui.White,
 			Content = new VerticalStackLayout
@@ -95,138 +194,24 @@ public partial class RevisionHistoryPage : ContentPage
 				Spacing = 10,
 				Children =
 				{
-					new Grid
-					{
-						ColumnDefinitions =
-						{
-							new ColumnDefinition { Width = GridLength.Star },
-							new ColumnDefinition { Width = GridLength.Auto }
-						},
-						Children =
-						{
-							new VerticalStackLayout
-							{
-								Spacing = 2,
-								Children =
-								{
-									new Label
-									{
-										Text = revision.EditedBy,
-										FontSize = 13,
-										FontAttributes = FontAttributes.Bold,
-										TextColor = Ui.Navy
-									},
-									new Label
-									{
-										Text = revision.Role,
-										FontSize = 11,
-										TextColor = Ui.NavyMutedText
-									}
-								}
-							},
-							new Label
-							{
-								Text = FormatDateTime(revision.Timestamp),
-								FontSize = 10,
-								TextColor = Ui.NavyMutedText,
-								VerticalOptions = LayoutOptions.Start
-							}
-						}
-					},
-
+					actorRow,
 					new BoxView
 					{
 						Color = Ui.NavyLine,
 						Opacity = 0.45,
 						HeightRequest = 1
 					},
-
-					new Frame
-					{
-						CornerRadius = 6,
-						HasShadow = false,
-						BorderColor = Colors.Transparent,
-						Padding = new Thickness(8, 3),
-						BackgroundColor = Ui.NavyWash,
-						HorizontalOptions = LayoutOptions.Start,
-						Content = new Label
-						{
-							Text = revision.FieldChanged,
-							FontSize = 11,
-							FontAttributes = FontAttributes.Bold,
-							TextColor = Ui.Navy
-						}
-					},
-
-					new VerticalStackLayout
-					{
-						Spacing = 6,
-						Children =
-						{
-							new Frame
-							{
-								CornerRadius = 8,
-								Padding = new Thickness(10, 8),
-								BorderColor = Ui.Navy,
-								BackgroundColor = Ui.NavyWash,
-								HasShadow = false,
-								Content = new VerticalStackLayout
-								{
-									Spacing = 2,
-									Children =
-									{
-										new Label
-										{
-											Text = "BEFORE",
-											FontSize = 9,
-											TextColor = Ui.Navy,
-											FontAttributes = FontAttributes.Bold
-										},
-										new Label
-										{
-											Text = revision.OldValue,
-											FontSize = 12,
-											TextColor = Ui.Navy,
-											LineBreakMode = LineBreakMode.WordWrap
-										}
-									}
-								}
-							},
-
-							new Frame
-							{
-								CornerRadius = 8,
-								Padding = new Thickness(10, 8),
-								BorderColor = Ui.NavyLine,
-								BackgroundColor = Ui.White,
-								HasShadow = false,
-								Content = new VerticalStackLayout
-								{
-									Spacing = 2,
-									Children =
-									{
-										new Label
-										{
-											Text = "AFTER",
-											FontSize = 9,
-											TextColor = Ui.Navy,
-											FontAttributes = FontAttributes.Bold
-										},
-										new Label
-										{
-											Text = revision.NewValue,
-											FontSize = 12,
-											TextColor = Ui.Navy,
-											LineBreakMode = LineBreakMode.WordWrap
-										}
-									}
-								}
-							}
-						}
-					}
+					fieldBadge,
+					notePanel
 				}
 			}
 		};
+	}
+
+	private void SetLoadingState(bool loading)
+	{
+		RevisionLoadingIndicator.IsVisible = loading;
+		RevisionLoadingIndicator.IsRunning = loading;
 	}
 
 	private static string FormatDateTime(DateTime dateTime)
@@ -254,5 +239,24 @@ public partial class RevisionHistoryPage : ContentPage
 		}
 
 		return dateTime.ToString("MMM dd, yyyy");
+	}
+}
+
+internal static class RevisionHistoryUiExtensions
+{
+	public static T Assign<T>(this T view, int? gridColumn = null, int? gridRow = null)
+		where T : View
+	{
+		if (gridColumn.HasValue)
+		{
+			Grid.SetColumn(view, gridColumn.Value);
+		}
+
+		if (gridRow.HasValue)
+		{
+			Grid.SetRow(view, gridRow.Value);
+		}
+
+		return view;
 	}
 }

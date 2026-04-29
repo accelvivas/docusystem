@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("docusystem")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0+6779cde148da3fbc4e30cff1791a8b96be503fbe")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0+572e6ba939cbce6f772646b07e71c56ce0db1233")]
 [assembly: System.Reflection.AssemblyProductAttribute("docusystem")]
 [assembly: System.Reflection.AssemblyTitleAttribute("docusystem")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

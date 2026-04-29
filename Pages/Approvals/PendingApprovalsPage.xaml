@@ -19,11 +19,13 @@
                     <VerticalStackLayout Spacing="12">
 
                         <VerticalStackLayout Spacing="2">
-                            <Label Text="My Pending Approvals"
+                            <Label x:Name="PendingPageTitleLabel"
+                                   Text="My Pending Approvals"
                                    FontSize="24"
                                    FontAttributes="Bold"
                                    TextColor="#0F2A5F" />
-                            <Label Text="Only documents currently routed to your role are shown."
+                            <Label x:Name="PendingPageSubtitleLabel"
+                                   Text="Only documents currently routed to your role are shown."
                                    FontSize="12"
                                    TextColor="#4A648F"
                                    LineBreakMode="WordWrap" />
@@ -92,16 +94,6 @@
 
                         <VerticalStackLayout x:Name="ProposalsStack" Spacing="10" />
 
-                        <Button Text="Open mock proposal preview"
-                                FontSize="12"
-                                FontAttributes="Bold"
-                                TextColor="#003087"
-                                BackgroundColor="White"
-                                BorderColor="#003087"
-                                BorderWidth="1.5"
-                                CornerRadius="10"
-                                Padding="0,10"
-                                Clicked="OnOpenMockProposalClicked" />
                     </VerticalStackLayout>
                 </Border>
             </VerticalStackLayout>

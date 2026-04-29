@@ -39,6 +39,16 @@
                             <Label x:Name="StageHeroLabel" Text="Stage: —"
                                    FontSize="11" FontAttributes="Bold" TextColor="White" />
                         </Border>
+                        <Border BackgroundColor="#EAF0FC"
+                                StrokeShape="RoundRectangle 8"
+                                Stroke="Transparent"
+                                Padding="10,5">
+                            <Label x:Name="CurrentApproverBadgeLabel"
+                                   Text="Current Approver: —"
+                                   FontSize="11"
+                                   FontAttributes="Bold"
+                                   TextColor="#003087" />
+                        </Border>
                     </HorizontalStackLayout>
                 </VerticalStackLayout>
             </Grid>

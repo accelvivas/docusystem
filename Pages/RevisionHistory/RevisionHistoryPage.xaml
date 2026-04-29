@@ -48,6 +48,17 @@
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="10">
                         <Label Text="Full change log" Style="{StaticResource SectionTitle}" />
+                        <ActivityIndicator x:Name="RevisionLoadingIndicator"
+                                           IsVisible="False"
+                                           IsRunning="False"
+                                           Color="{StaticResource Primary}"
+                                           HorizontalOptions="Center" />
+                        <Label x:Name="RevisionErrorStateLabel"
+                               IsVisible="False"
+                               FontSize="12"
+                               TextColor="{StaticResource Primary}"
+                               HorizontalTextAlignment="Center"
+                               LineBreakMode="WordWrap" />
                         <VerticalStackLayout x:Name="RevisionTimelineStack" Spacing="10" />
                     </VerticalStackLayout>
                 </Border>

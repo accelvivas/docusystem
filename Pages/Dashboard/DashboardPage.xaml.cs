@@ -56,7 +56,9 @@ public partial class DashboardPage : ContentPage
 			: currentUser.Role;
 		ResponsibilityHintLabel.Text = BuildResponsibilityLine(currentUser.Role);
 
-		var proposals = (await _proposalService.GetPendingApprovalsAsync()).ToList();
+		var proposals = IsSubmitterLane(currentUser)
+			? (await _proposalService.GetMySubmissionsAsync()).ToList()
+			: (await _proposalService.GetPendingApprovalsAsync()).ToList();
 		var hasLiveData = proposals.Count > 0;
 		var weekStart = DateTime.Today.AddDays(-7);
 
@@ -83,7 +85,7 @@ public partial class DashboardPage : ContentPage
 			p.SubmittedDate < DateTime.Today.AddDays(-7));
 
 		// If backend data is not available yet, keep the card layout useful with starter placeholders.
-		PendingApprovalsCountLabel.Text = (hasLiveData ? needsMyReview : 2).ToString();
+		PendingApprovalsCountLabel.Text = (hasLiveData ? needsMyReview : 0).ToString();
 		RevisionFollowUpCountLabel.Text = (hasLiveData ? revisionFollowUp : 0).ToString();
 		ApprovedThisWeekCountLabel.Text = (hasLiveData ? approvedThisWeek : 0).ToString();
 		RejectedReturnedWeekCountLabel.Text = (hasLiveData ? rejectedOrReturnedThisWeek : 0).ToString();
@@ -148,6 +150,14 @@ public partial class DashboardPage : ContentPage
 		}
 
 		return string.Join('\n', lines);
+	}
+
+	private static bool IsSubmitterLane(User user)
+	{
+		return string.Equals(user.Role, "RSO President", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.Role, "Organization Officer", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "rso_president", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "org_officer", StringComparison.OrdinalIgnoreCase);
 	}
 
 	/// <summary>Dashboard → full Pending Approvals list (All).</summary>

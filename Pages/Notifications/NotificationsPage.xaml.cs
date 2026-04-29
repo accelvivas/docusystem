@@ -22,13 +22,27 @@ public partial class NotificationsPage : ContentPage
 	protected override async void OnAppearing()
 	{
 		base.OnAppearing();
-		await LoadNotificationsAsync();
+		try
+		{
+			SetLoadingState(true);
+			ErrorStateLabel.IsVisible = false;
+			await LoadNotificationsAsync();
+			SetLoadingState(false);
+		}
+		catch (Exception ex)
+		{
+			System.Diagnostics.Debug.WriteLine(ex);
+			SetLoadingState(false);
+			ErrorStateLabel.Text = "Could not load notifications. Pull down to retry.";
+			ErrorStateLabel.IsVisible = true;
+		}
 	}
 
 	private async void OnNotificationsRefreshing(object? sender, EventArgs e)
 	{
 		try
 		{
+			ErrorStateLabel.IsVisible = false;
 			await LoadNotificationsAsync();
 		}
 		finally
@@ -42,7 +56,7 @@ public partial class NotificationsPage : ContentPage
 		// TODO: GET /api/notifications — Laravel scopes to authenticated user
 		var items = await _notificationService.GetNotificationsAsync();
 		allNotifications = items.OrderByDescending(n => n.DateCreated).ToList();
-		DisplayNotifications(allNotifications);
+		ApplyFilter();
 	}
 
 	private void DisplayNotifications(List<NotificationItem> notificationsToDisplay)
@@ -73,7 +87,7 @@ public partial class NotificationsPage : ContentPage
 		}
 	}
 
-	private Frame CreateNotificationCard(NotificationItem notification)
+	private Border CreateNotificationCard(NotificationItem notification)
 	{
 		var isUnread = !notification.IsRead;
 		var badgeColor = isUnread ? Ui.Navy : Ui.NavyWash;
@@ -81,11 +95,29 @@ public partial class NotificationsPage : ContentPage
 		var cardBg = isUnread ? Ui.NavyWash : Ui.White;
 		var borderColor = isUnread ? Ui.Navy : Ui.NavyLine;
 
-		return new Frame
+		var badge = new Border
 		{
-			CornerRadius = 14,
-			BorderColor = borderColor,
-			HasShadow = false,
+			BackgroundColor = badgeColor,
+			Stroke = Colors.Transparent,
+			StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 6 },
+			StrokeThickness = 0,
+			Padding = new Thickness(7, 3),
+			VerticalOptions = LayoutOptions.Start,
+			Content = new Label
+			{
+				Text = badgeText,
+				FontSize = 10,
+				FontAttributes = FontAttributes.Bold,
+				TextColor = isUnread ? Colors.White : Ui.Navy
+			}
+		};
+		Grid.SetColumn(badge, 1);
+
+		return new Border
+		{
+			StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 14 },
+			Stroke = borderColor,
+			StrokeThickness = 1,
 			Padding = 14,
 			BackgroundColor = cardBg,
 			Content = new VerticalStackLayout
@@ -123,22 +155,7 @@ public partial class NotificationsPage : ContentPage
 									}
 								}
 							},
-							new Frame
-							{
-								CornerRadius = 6,
-								HasShadow = false,
-								BorderColor = Colors.Transparent,
-								Padding = new Thickness(7, 3),
-								BackgroundColor = badgeColor,
-								VerticalOptions = LayoutOptions.Start,
-								Content = new Label
-								{
-									Text = badgeText,
-									FontSize = 10,
-									FontAttributes = FontAttributes.Bold,
-									TextColor = isUnread ? Colors.White : Ui.Navy
-								}
-							}
+							badge
 						}
 					},
 					new Label
@@ -150,6 +167,12 @@ public partial class NotificationsPage : ContentPage
 				}
 			}
 		};
+	}
+
+	private void SetLoadingState(bool loading)
+	{
+		LoadingIndicator.IsVisible = loading;
+		LoadingIndicator.IsRunning = loading;
 	}
 
 	private void OnFilterClicked(object? sender, EventArgs e)

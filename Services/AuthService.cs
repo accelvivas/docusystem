@@ -46,6 +46,77 @@ namespace docusystem.Services;
 		return await LoginLaravelAsync(email, password, cancellationToken).ConfigureAwait(false);
 	}
 
+	public async Task<LoginResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
+	{
+		if (request is null || string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
+		{
+			return LoginResult.Fail("Email and password are required.");
+		}
+
+		// Controller (AuthController@register) validates exactly: name | email | password | password_confirmed.
+		// Build a sensible "name" if the caller only sent first_name + last_name.
+		var name = !string.IsNullOrWhiteSpace(request.Name)
+			? request.Name!.Trim()
+			: $"{request.FirstName} {request.LastName}".Trim();
+
+		if (string.IsNullOrWhiteSpace(name))
+		{
+			return LoginResult.Fail("Please provide your full name.");
+		}
+
+		var client = _httpClientFactory.CreateClient("LaravelApi");
+
+		try
+		{
+			using var response = await client.PostAsJsonAsync(
+				"api/register",
+				new
+				{
+					name,
+					email = request.Email,
+					password = request.Password,
+					password_confirmation = request.PasswordConfirmation ?? request.Password
+				},
+				cancellationToken).ConfigureAwait(false);
+
+			var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+			if (response.IsSuccessStatusCode)
+			{
+				var parsed = TryParseLoginSuccess(body);
+				if (parsed.User is null || string.IsNullOrWhiteSpace(parsed.User.Email))
+				{
+					return LoginResult.Fail("Registration succeeded but the response did not contain a user/token.");
+				}
+
+				await _session.SetFromLoginAsync(parsed.User, parsed.Token, cancellationToken).ConfigureAwait(false);
+				var fromApi = await GetLaravelUserFromApiUserEndpointAsync(cancellationToken).ConfigureAwait(false);
+				var finalUser = MergeLaravelUserProfile(parsed.User, fromApi) ?? parsed.User;
+				await _session.SetFromLoginAsync(finalUser, parsed.Token, cancellationToken).ConfigureAwait(false);
+				return LoginResult.Ok(finalUser, parsed.Token);
+			}
+
+			var message = TryParseLaravelErrorMessage(body)
+				?? (response.StatusCode == HttpStatusCode.UnprocessableEntity
+					? "The provided details are invalid."
+					: $"HTTP {(int)response.StatusCode}");
+
+			return LoginResult.Fail(message);
+		}
+		catch (HttpRequestException ex)
+		{
+			return LoginResult.Fail($"Cannot reach {_apiOptions.LaravelBaseUrl}api/register — {ex.Message}");
+		}
+		catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			return LoginResult.Fail($"Request timed out to {_apiOptions.LaravelBaseUrl}api/register.");
+		}
+		catch (JsonException)
+		{
+			return LoginResult.Fail("Invalid response from server.");
+		}
+	}
+
 	private bool IsSupabaseAuth() =>
 		string.Equals(_authOptions.Provider, "Supabase", StringComparison.OrdinalIgnoreCase);
 

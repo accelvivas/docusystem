@@ -48,7 +48,7 @@ public sealed class ProposalService : IProposalService
 		try
 		{
 			var client = _httpClientFactory.CreateClient("LaravelApi");
-			using var response = await client.GetAsync("api/proposals/pending", cancellationToken).ConfigureAwait(false);
+			using var response = await client.GetAsync("api/approvals/pending", cancellationToken).ConfigureAwait(false);
 			if (!response.IsSuccessStatusCode)
 			{
 				return [];
@@ -56,6 +56,71 @@ public sealed class ProposalService : IProposalService
 
 			var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 			return ParseProposalList(json);
+		}
+		catch (HttpRequestException)
+		{
+			return [];
+		}
+		catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			return [];
+		}
+		catch (JsonException)
+		{
+			return [];
+		}
+	}
+
+	public async Task<IReadOnlyList<Proposal>> GetMySubmissionsAsync(CancellationToken cancellationToken = default)
+	{
+		if (_session.CurrentUser is null)
+		{
+			return [];
+		}
+
+		if (IsSupabaseBackend())
+		{
+			// Supabase mode currently uses a flat proposals table; fallback to the same list.
+			return await GetPendingFromSupabaseAsync(cancellationToken).ConfigureAwait(false);
+		}
+
+		try
+		{
+			var client = _httpClientFactory.CreateClient("LaravelApi");
+
+			// Route fallbacks so mobile can work even when backend naming differs.
+			var candidatePaths = new[]
+			{
+				"api/proposals/my-submissions",
+				"api/proposals/mine",
+				"api/proposals?scope=my_submissions",
+				"api/proposals?mine=1",
+				"api/proposals?owned=1"
+			};
+
+			for (var i = 0; i < candidatePaths.Length; i++)
+			{
+				using var response = await client.GetAsync(candidatePaths[i], cancellationToken).ConfigureAwait(false);
+				if (!response.IsSuccessStatusCode)
+				{
+					// Skip missing route variants; stop for explicit auth/validation failures.
+					if ((int)response.StatusCode is 401 or 403 or 422)
+					{
+						return [];
+					}
+
+					continue;
+				}
+
+				var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+				var parsed = ParseProposalList(json);
+				if (parsed.Count > 0)
+				{
+					return parsed;
+				}
+			}
+
+			return [];
 		}
 		catch (HttpRequestException)
 		{
@@ -102,6 +167,62 @@ public sealed class ProposalService : IProposalService
 		{
 			return null;
 		}
+	}
+
+	public async Task<IReadOnlyList<ApprovalStep>> GetProposalWorkflowAsync(int proposalId, CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var client = _httpClientFactory.CreateClient("LaravelApi");
+			using var response = await client.GetAsync($"api/proposals/{proposalId}/workflow", cancellationToken)
+				.ConfigureAwait(false);
+			if (!response.IsSuccessStatusCode)
+			{
+				return [];
+			}
+
+			var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+			return ParseApprovalStepList(json);
+		}
+		catch (HttpRequestException)
+		{
+			return [];
+		}
+		catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			return [];
+		}
+		catch (JsonException)
+		{
+			return [];
+		}
+	}
+
+	private static IReadOnlyList<ApprovalStep> ParseApprovalStepList(string json)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return [];
+		}
+
+		using var doc = JsonDocument.Parse(json);
+		var root = doc.RootElement;
+		if (root.ValueKind == JsonValueKind.Array)
+		{
+			return root.Deserialize<List<ApprovalStep>>(JsonOptions) ?? [];
+		}
+
+		if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+		{
+			return data.Deserialize<List<ApprovalStep>>(JsonOptions) ?? [];
+		}
+
+		if (root.TryGetProperty("steps", out var steps) && steps.ValueKind == JsonValueKind.Array)
+		{
+			return steps.Deserialize<List<ApprovalStep>>(JsonOptions) ?? [];
+		}
+
+		return [];
 	}
 
 	public async Task<ApiActionResult> UpdateProposalAsync(Proposal proposal, CancellationToken cancellationToken = default)
@@ -224,7 +345,7 @@ public sealed class ProposalService : IProposalService
 		if (root.ValueKind == JsonValueKind.Array)
 		{
 			var list = root.Deserialize<List<Proposal>>(JsonOptions) ?? [];
-			DecorateFlowType(list);
+			DecorateProposals(list);
 
 			return list;
 		}
@@ -232,7 +353,7 @@ public sealed class ProposalService : IProposalService
 		if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
 		{
 			var list = data.Deserialize<List<Proposal>>(JsonOptions) ?? [];
-			DecorateFlowType(list);
+			DecorateProposals(list);
 
 			return list;
 		}
@@ -253,7 +374,7 @@ public sealed class ProposalService : IProposalService
 		// Shape A: direct object proposal payload
 		if (TryDeserializeProposal(root, out var direct))
 		{
-			direct!.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(direct);
+			DecorateProposal(direct!);
 			return direct;
 		}
 
@@ -262,13 +383,13 @@ public sealed class ProposalService : IProposalService
 		{
 			if (root.TryGetProperty("data", out var data) && TryDeserializeProposal(data, out var fromData))
 			{
-				fromData!.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(fromData);
+				DecorateProposal(fromData!);
 				return fromData;
 			}
 
 			if (root.TryGetProperty("proposal", out var proposal) && TryDeserializeProposal(proposal, out var fromProposal))
 			{
-				fromProposal!.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(fromProposal);
+				DecorateProposal(fromProposal!);
 				return fromProposal;
 			}
 
@@ -278,7 +399,7 @@ public sealed class ProposalService : IProposalService
 			    nestedData.TryGetProperty("proposal", out var nestedProposal) &&
 			    TryDeserializeProposal(nestedProposal, out var nested))
 			{
-				nested!.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(nested);
+				DecorateProposal(nested!);
 				return nested;
 			}
 		}
@@ -305,12 +426,19 @@ public sealed class ProposalService : IProposalService
 		}
 	}
 
-	private static void DecorateFlowType(List<Proposal> list)
+	private static void DecorateProposals(List<Proposal> list)
 	{
 		for (var i = 0; i < list.Count; i++)
 		{
-			list[i].ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(list[i]);
+			DecorateProposal(list[i]);
 		}
+	}
+
+	/// <summary>Projects nested API fields into canonical model props and infers flow type.</summary>
+	private static void DecorateProposal(Proposal proposal)
+	{
+		Proposal.NormalizeFromExtensionData(proposal);
+		proposal.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(proposal);
 	}
 
 	private static string? ExtractMessage(string json)
@@ -329,4 +457,5 @@ public sealed class ProposalService : IProposalService
 
 		return null;
 	}
+
 }

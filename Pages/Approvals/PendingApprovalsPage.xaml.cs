@@ -45,6 +45,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		base.OnAppearing();
 		try
 		{
+			ApplyRoleHeaderCopy();
 			SetLoadingState(true);
 			InitializeFilterDefaults();
 			await LoadProposalsAsync();
@@ -83,11 +84,40 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 			return;
 		}
 
-		var proposals = (await _proposalService.GetPendingApprovalsAsync()).ToList();
+		var proposals = IsRsoPresident(currentUser)
+			? (await _proposalService.GetMySubmissionsAsync()).ToList()
+			: (await _proposalService.GetPendingApprovalsAsync()).ToList();
+
 		_allProposals = proposals
 			.OrderByDescending(p => string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase))
 			.ThenByDescending(p => p.SubmittedDate)
 			.ToList();
+	}
+
+	private static bool IsRsoPresident(User user)
+	{
+		// Support both explicit rso_president and org_officer-style identities
+		// that still represent submitter lanes in some backends.
+		return string.Equals(user.Role, "RSO President", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.Role, "Organization Officer", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "rso_president", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "org_officer", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private void ApplyRoleHeaderCopy()
+	{
+		var isSubmitterLane = _session.CurrentUser is User u && IsRsoPresident(u);
+		if (isSubmitterLane)
+		{
+			Title = "My Submissions";
+			PendingPageTitleLabel.Text = "My Submissions";
+			PendingPageSubtitleLabel.Text = "Track your submitted proposals and revision follow-ups.";
+			return;
+		}
+
+		Title = "Pending Approvals";
+		PendingPageTitleLabel.Text = "My Pending Approvals";
+		PendingPageSubtitleLabel.Text = "Only documents currently routed to your role are shown.";
 	}
 
 	private void InitializeFilterDefaults()
@@ -422,29 +452,6 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		}
 	}
 
-	private async void OnOpenMockProposalClicked(object? sender, EventArgs e)
-	{
-		var mock = new Proposal
-		{
-			Id = 999001,
-			Title = "DOTA Tournament",
-			OrganizationName = "Hacker Team",
-			SubmittedBy = "Alcantara Kid",
-			CurrentStage = "Adviser",
-			Status = "Under Review",
-			ActivityDate = DateTime.Today.AddDays(3),
-			Venue = "Gym",
-			Budget = 100000m,
-			Description = "Campus-wide e-sports event focused on teamwork, strategy, and student engagement.",
-			SubmittedDate = DateTime.Today.AddDays(-1),
-			CanApprove = true,
-			CanEdit = false,
-			ApprovalFlowType = ApprovalFlowType.Academic
-		};
-
-		_session.SetSelectedProposal(mock);
-		await Shell.Current.GoToAsync("proposaldetails");
-	}
 }
 
 internal static class PendingApprovalUiExtensions

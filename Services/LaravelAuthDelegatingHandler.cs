@@ -28,6 +28,21 @@ public sealed class LaravelAuthDelegatingHandler : DelegatingHandler
 		}
 
 		var path = request.RequestUri.AbsolutePath;
-		return !path.Contains("/api/login", StringComparison.OrdinalIgnoreCase);
+
+		// Public mobile endpoints (no Sanctum token attached).
+		if (path.Contains("/api/login", StringComparison.OrdinalIgnoreCase) ||
+		    path.Contains("/api/register", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		// Signed file-stream URLs already carry their own signature.
+		if (path.Contains("/api/attachments/", StringComparison.OrdinalIgnoreCase) &&
+		    path.EndsWith("/stream", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		return true;
 	}
 }

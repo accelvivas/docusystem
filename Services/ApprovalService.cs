@@ -70,12 +70,17 @@ public sealed class ApprovalService : IApprovalService
 		try
 		{
 			var client = _httpClientFactory.CreateClient("LaravelApi");
-			using var response = await client.PostAsync($"api/proposals/{proposalId}/approve", null, cancellationToken)
-				.ConfigureAwait(false);
+			// Controller validates `comments` as nullable; sending empty string keeps the
+			// shape consistent with the web flow.
+			using var response = await client.PostAsJsonAsync(
+				$"api/proposals/{proposalId}/approve",
+				new { comments = string.Empty },
+				JsonOptions,
+				cancellationToken).ConfigureAwait(false);
 
 			if (response.IsSuccessStatusCode)
 			{
-				return ApiActionResult.Ok();
+				return ApiActionResult.Ok("Proposal approved.");
 			}
 
 			var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -93,22 +98,63 @@ public sealed class ApprovalService : IApprovalService
 
 	public async Task<ApiActionResult> ReturnProposalAsync(int proposalId, string? remarks, CancellationToken cancellationToken = default)
 	{
+		var comments = (remarks ?? string.Empty).Trim();
+		if (string.IsNullOrEmpty(comments))
+		{
+			return ApiActionResult.Fail("Please add revision notes before returning the proposal.");
+		}
+
 		try
 		{
 			var client = _httpClientFactory.CreateClient("LaravelApi");
 			using var response = await client.PostAsJsonAsync(
 				$"api/proposals/{proposalId}/return",
-				new { remarks },
+				new { comments },
 				JsonOptions,
 				cancellationToken).ConfigureAwait(false);
 
 			if (response.IsSuccessStatusCode)
 			{
-				return ApiActionResult.Ok("The proposal was sent back. The RSO President can edit and address your remarks.");
+				return ApiActionResult.Ok("The proposal was returned. The RSO President can edit and address your notes.");
 			}
 
 			var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 			return ApiActionResult.Fail(ExtractMessage(body) ?? $"Could not return proposal ({(int)response.StatusCode}).");
+		}
+		catch (HttpRequestException)
+		{
+			return ApiActionResult.Fail("Cannot reach the server.");
+		}
+		catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			return ApiActionResult.Fail("Request timed out.");
+		}
+	}
+
+	public async Task<ApiActionResult> RejectProposalAsync(int proposalId, string? reason, CancellationToken cancellationToken = default)
+	{
+		var comments = (reason ?? string.Empty).Trim();
+		if (string.IsNullOrEmpty(comments))
+		{
+			return ApiActionResult.Fail("Please provide a reason before rejecting.");
+		}
+
+		try
+		{
+			var client = _httpClientFactory.CreateClient("LaravelApi");
+			using var response = await client.PostAsJsonAsync(
+				$"api/proposals/{proposalId}/reject",
+				new { comments },
+				JsonOptions,
+				cancellationToken).ConfigureAwait(false);
+
+			if (response.IsSuccessStatusCode)
+			{
+				return ApiActionResult.Ok("The proposal has been rejected.");
+			}
+
+			var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+			return ApiActionResult.Fail(ExtractMessage(body) ?? $"Could not reject proposal ({(int)response.StatusCode}).");
 		}
 		catch (HttpRequestException)
 		{

@@ -61,9 +61,12 @@ public partial class ProposalDetailsPage : ContentPage
 		_proposal = _session.SelectedProposal;
 		if (_proposal is null)
 		{
-			// UI preview fallback: load a mock proposal so approvers can review the new layout immediately.
-			_proposal = CreateMockProposal();
-			_session.SetSelectedProposal(_proposal);
+			await DisplayAlertAsync(
+				"No proposal selected",
+				"Go to Pending Approvals and open a proposal to review real data.",
+				"OK");
+			await Shell.Current.GoToAsync("//pendingapprovals");
+			return;
 		}
 
 		var refreshed = await _proposalService.GetProposalByIdAsync(_proposal.Id);
@@ -93,28 +96,6 @@ public partial class ProposalDetailsPage : ContentPage
 		BuildWorkflowLogs();
 	}
 
-	private static Proposal CreateMockProposal()
-	{
-		var activityDate = DateTime.Today.AddDays(3);
-		return new Proposal
-		{
-			Id = 999001,
-			Title = "DOTA Tournament",
-			OrganizationName = "Hacker Team",
-			SubmittedBy = "Alcantara Kid",
-			CurrentStage = "Adviser",
-			Status = "Under Review",
-			ActivityDate = activityDate,
-			Venue = "Gym",
-			Budget = 100000m,
-			Description = "Campus-wide e-sports event focused on teamwork, strategy, and student engagement.",
-			SubmittedDate = DateTime.Today.AddDays(-1),
-			CanApprove = true,
-			CanEdit = false,
-			ApprovalFlowType = ApprovalFlowType.Academic
-		};
-	}
-
 	// ──────────────────────────────────────────────────────────────────────────
 	// Header
 	// ──────────────────────────────────────────────────────────────────────────
@@ -132,6 +113,7 @@ public partial class ProposalDetailsPage : ContentPage
 		OrganizationLabel.Text = _proposal.OrganizationName;
 		StatusLabel.Text = _proposal.Status;
 		StageHeroLabel.Text = $"Stage: {_proposal.CurrentStage}";
+		CurrentApproverBadgeLabel.Text = $"Current Approver: {ResolveCurrentApprover()}";
 
 		ApplyStatusBadge(_proposal.Status);
 
@@ -154,6 +136,25 @@ public partial class ProposalDetailsPage : ContentPage
 		ApprovalRules.ApplyWorkflowPermissions(_proposal, user);
 		var canApprove = !isFullyApproved && ApprovalRules.CanApprove(user, _proposal);
 		SubmitFieldReviewBtn.IsVisible = canApprove;
+	}
+
+	private string ResolveCurrentApprover()
+	{
+		if (_steps.Count > 0)
+		{
+			var current = _steps.FirstOrDefault(s => s.IsCurrentStep);
+			if (current is not null && !string.IsNullOrWhiteSpace(current.RoleName))
+			{
+				return current.RoleName;
+			}
+		}
+
+		if (_proposal is not null && !string.IsNullOrWhiteSpace(_proposal.CurrentStage))
+		{
+			return _proposal.CurrentStage;
+		}
+
+		return "—";
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
@@ -1002,22 +1003,17 @@ public partial class ProposalDetailsPage : ContentPage
 
 		var anyRevision = _fields.Any(f => f.State == FieldReviewState.Revision);
 
-		var isMock = _proposal.Id == 999001;
-
 		if (anyRevision)
 		{
 			var remarks = string.Join('\n', _fields
 				.Where(f => f.State == FieldReviewState.Revision)
 				.Select(f => $"• {f.Label}: {f.RevisionNote}"));
 
-			if (!isMock)
+			var result = await _approvalService.ReturnProposalAsync(_proposal.Id, remarks);
+			if (!result.Success)
 			{
-				var result = await _approvalService.ReturnProposalAsync(_proposal.Id, remarks);
-				if (!result.Success)
-				{
-					await DisplayAlertAsync("Could not return", result.Message ?? "Please try again.", "OK");
-					return;
-				}
+				await DisplayAlertAsync("Could not return", result.Message ?? "Please try again.", "OK");
+				return;
 			}
 
 			_proposal.Status = "Returned for Revision";
@@ -1026,14 +1022,11 @@ public partial class ProposalDetailsPage : ContentPage
 		}
 		else
 		{
-			if (!isMock)
+			var result = await _approvalService.ApproveProposalAsync(_proposal.Id);
+			if (!result.Success)
 			{
-				var result = await _approvalService.ApproveProposalAsync(_proposal.Id);
-				if (!result.Success)
-				{
-					await DisplayAlertAsync("Could not approve", result.Message ?? "Please try again.", "OK");
-					return;
-				}
+				await DisplayAlertAsync("Could not approve", result.Message ?? "Please try again.", "OK");
+				return;
 			}
 
 			// Advance to the next stage locally so the UI updates immediately.

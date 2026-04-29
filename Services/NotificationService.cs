@@ -63,6 +63,22 @@ public sealed class NotificationService : INotificationService
 		}
 	}
 
+	public async Task MarkAllAsReadAsync(CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var client = _httpClientFactory.CreateClient("LaravelApi");
+			using var request = new HttpRequestMessage(HttpMethod.Patch, "api/notifications/read-all");
+			await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+		}
+		catch (HttpRequestException)
+		{
+		}
+		catch (TaskCanceledException)
+		{
+		}
+	}
+
 	private static IReadOnlyList<NotificationItem> ParseNotificationList(string json)
 	{
 		using var doc = JsonDocument.Parse(json);

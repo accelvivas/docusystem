@@ -13,15 +13,56 @@
         <member name="F:docusystem.Models.ApprovalFlowType.NonAcademic">
             <summary>Non-curricular: Adviser first, then direct to SDAO chain (Program Chair and Dean skipped).</summary>
         </member>
+        <member name="T:docusystem.Models.ApprovalStep">
+            <summary>
+            One row from the server-driven approval timeline. Field names line up 1:1 with
+            <c>ProposalController::workflow</c> / <c>workflow_summary</c> in <c>show</c> responses
+            (i.e. <c>step_id</c>, <c>step_order</c>, <c>role_name</c>, <c>status</c>,
+            <c>is_current_step</c>, <c>assigned_to</c>, <c>review_comments</c>, <c>acted_at</c>).
+            </summary>
+        </member>
         <member name="P:docusystem.Models.ApprovalStep.ReviewedBy">
-            <summary>Name of the user who acted on this step (if available).</summary>
+            <summary>API: <c>assigned_to</c> — full name of the assigned approver, or null.</summary>
+        </member>
+        <member name="P:docusystem.Models.ApprovalStep.ReviewComments">
+            <summary>API: <c>review_comments</c> — note left by the approver on this step.</summary>
         </member>
         <member name="P:docusystem.Models.ApprovalStep.ActedAt">
-            <summary>When this step was acted on (approved, returned, etc.).</summary>
+            <summary>API: <c>acted_at</c> — when this step was acted on (approved, returned, etc.).</summary>
+        </member>
+        <member name="T:docusystem.Models.NotificationItem">
+            <summary>
+            Aligns 1:1 with <c>NotificationController@index</c> (Laravel):
+            <c>{ id, title, message, type, link_url, read_at, created_at }</c>.
+            <see cref="P:docusystem.Models.NotificationItem.IsRead"/> is derived from <see cref="P:docusystem.Models.NotificationItem.ReadAt"/> so callers can keep
+            using the same boolean check the UI already relies on.
+            </summary>
+        </member>
+        <member name="P:docusystem.Models.NotificationItem.Message">
+            <summary>API maps <c>notifications.body</c> to <c>message</c>.</summary>
+        </member>
+        <member name="P:docusystem.Models.NotificationItem.LinkUrl">
+            <summary>Optional deep link the UI can open when the notification is tapped.</summary>
+        </member>
+        <member name="P:docusystem.Models.NotificationItem.ReadAt">
+            <summary>Server timestamp when the notification was marked as read; <c>null</c> means unread.</summary>
+        </member>
+        <member name="P:docusystem.Models.NotificationItem.IsRead">
+            <summary>True when <see cref="P:docusystem.Models.NotificationItem.ReadAt"/> has a value.</summary>
+        </member>
+        <member name="P:docusystem.Models.NotificationItem.ProposalId">
+            <summary>Reserved for future contract additions; not sent by the current controller.</summary>
+        </member>
+        <member name="P:docusystem.Models.NotificationItem.RecipientRole">
+            <summary>Reserved for future contract additions; not sent by the current controller.</summary>
         </member>
         <member name="T:docusystem.Models.Proposal">
             <summary>
-            Proposal summary/detail — align property names with Laravel API JSON (snake_case typical).
+            Proposal summary/detail. Canonical property names match the existing UI; the
+            <see cref="M:docusystem.Models.Proposal.NormalizeFromExtensionData(docusystem.Models.Proposal)"/> helper projects nested fields from the
+            new Laravel API contract (e.g. <c>organization.name</c>, <c>current_step.role_name</c>,
+            <c>activity_title</c>, <c>submission_date</c>) into these canonical fields after
+            deserialization. Unknown fields are captured by <see cref="P:docusystem.Models.Proposal.ExtraData"/>.
             </summary>
         </member>
         <member name="P:docusystem.Models.Proposal.CanEdit">
@@ -34,7 +75,7 @@
             <summary>Optional — set when status is fully approved (Laravel timestamp).</summary>
         </member>
         <member name="P:docusystem.Models.Proposal.LastRemarks">
-            <summary>Latest return-for-revision remarks from the reviewer (align with API field when available).</summary>
+            <summary>Latest return-for-revision remarks from the reviewer (combined from <c>revision_comments</c>).</summary>
         </member>
         <member name="P:docusystem.Models.Proposal.ApprovalFlowType">
             <summary>
@@ -43,15 +84,102 @@
         </member>
         <member name="P:docusystem.Models.Proposal.ExtraData">
             <summary>
-            Captures extra JSON fields from Laravel/Supabase responses so UI can consume new backend keys
-            without waiting for model schema updates.
+            Captures extra JSON fields from Laravel (e.g. <c>activity_title</c>, nested <c>organization</c>,
+            <c>current_step</c>, <c>workflow_summary</c>, etc.) so the UI can consume new backend keys
+            without waiting for model schema updates. Populated by <see cref="T:System.Text.Json.Serialization.JsonExtensionDataAttribute"/>.
             </summary>
+        </member>
+        <member name="M:docusystem.Models.Proposal.NormalizeFromExtensionData(docusystem.Models.Proposal)">
+            <summary>
+            Maps the API contract returned by ProposalController/ApprovalController into this canonical
+            model. Safe to call multiple times — each canonical field is filled only when empty.
+            </summary>
+        </member>
+        <member name="M:docusystem.Models.Proposal.NormalizeStatus(System.String)">
+            <summary>
+            Maps lowercase Laravel status enums (<c>pending</c>, <c>under_review</c>,
+            <c>revision_required</c>, <c>approved</c>, etc.) to the human-friendly
+            strings the UI expects (<c>Pending</c>, <c>Under Review</c>,
+            <c>Returned for Revision</c>, <c>Approved</c>, <c>Fully Approved</c>, <c>Rejected</c>).
+            </summary>
+        </member>
+        <member name="T:docusystem.Models.ProposalAttachment">
+            <summary>
+            Single file attached to a proposal. Lines up with what
+            <c>ProposalAttachmentController@index</c> returns:
+            <c>{ id, file_type, original_name, mime_type, file_size_kb, view_url, download_url }</c>.
+            Older contract fields (<c>file_name</c>, <c>size</c>, <c>category</c>, <c>uploaded_by</c>)
+            are kept for forward/back compatibility.
+            </summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalAttachment.FileType">
+            <summary>API: <c>file_type</c> — logical category (e.g. <c>request_letter</c>, <c>resume</c>).</summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalAttachment.FileSizeKb">
+            <summary>API: <c>file_size_kb</c> — rounded size in KiB (preferred).</summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalAttachment.Size">
+            <summary>Legacy field — bytes; kept for older endpoints.</summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalAttachment.StreamUrl">
+            <summary>Optional pre-signed stream URL when the API embeds it in the list response.</summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalAttachment.ViewUrl">
+            <summary>API: <c>view_url</c> — used to fetch a signed URL for in-browser preview.</summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalAttachment.DownloadUrl">
+            <summary>API: <c>download_url</c> — used to fetch a signed URL for download.</summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalAttachment.DisplayName">
+            <summary>Best-effort display name (falls back to <see cref="P:docusystem.Models.ProposalAttachment.FileName"/>).</summary>
+        </member>
+        <member name="P:docusystem.Models.ProposalAttachment.SizeBytes">
+            <summary>Friendly size in bytes, derived from whichever field the API populated.</summary>
         </member>
         <member name="T:docusystem.Models.ProposalFieldReview">
             <summary>Single field inside a proposal step that an approver marks as Passed or Needs Revision.</summary>
         </member>
         <member name="P:docusystem.Models.ProposalFieldReview.RevisionInputVisible">
             <summary>Runtime-only; tracks whether the revision note input is expanded.</summary>
+        </member>
+        <member name="T:docusystem.Models.RevisionLog">
+            <summary>
+            Single row in the unified revision timeline returned by
+            <c>ProposalRevisionController@index</c>. The controller merges three sources
+            (field-level reviews, approval logs, and workflow steps in <c>revision_required</c>),
+            so <see cref="P:docusystem.Models.RevisionLog.Type"/> tells the UI which kind of row this is and
+            <see cref="P:docusystem.Models.RevisionLog.Comment"/> carries the human-readable note.
+            </summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.Id">
+            <summary>
+            Composite ID like <c>field_5</c>, <c>log_12</c>, or <c>step_7</c> — kept as
+            <see cref="T:System.String"/> so we can deserialize it as-is.
+            </summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.Type">
+            <summary><c>field_revision</c>, <c>workflow_revision</c>, or <c>workflow_step_revision</c>.</summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.FieldLabel">
+            <summary>Display label for the field/step (e.g. <c>Title of Activity</c> or <c>Adviser</c>).</summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.Comment">
+            <summary>The reviewer's revision note / step remarks.</summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.FieldChanged">
+            <summary>UI label for "what was changed" — falls back to step/role name.</summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.EditedBy">
+            <summary>Display name of who left the note; defaults to "—" when the API doesn't include it.</summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.Role">
+            <summary>Friendly label for the row category (used in the legacy "role" UI slot).</summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.OldValue">
+            <summary>API doesn't return a "before" snapshot in the new contract.</summary>
+        </member>
+        <member name="P:docusystem.Models.RevisionLog.NewValue">
+            <summary>The reviewer's note — primary text the UI should render.</summary>
         </member>
         <member name="T:docusystem.Models.RoleIdCatalog">
             <summary>
@@ -263,6 +391,13 @@
         <member name="M:docusystem.Services.AppSessionService.SetAccessToken(System.String)">
             <summary>Sets only the bearer token (e.g. after loading from <see cref="T:Microsoft.Maui.Storage.SecureStorage"/>). Prefer <see cref="M:docusystem.Services.AppSessionService.SetCurrentUser(docusystem.Models.User,System.String)"/> when the user object is known.</summary>
         </member>
+        <member name="T:docusystem.Services.AttachmentService">
+            <summary>
+            Talks to the Laravel attachment endpoints. The list endpoint is plain JSON; the
+            view/download/stream endpoints return either a redirect URL or a JSON envelope
+            like <c>{ "url": "https://..." }</c>, depending on the controller.
+            </summary>
+        </member>
         <member name="T:docusystem.Services.AuthService">
             <summary>
             Login: <see cref="P:docusystem.Services.AuthOptions.Provider"/> <c>Supabase</c> → GoTrue email/password; <c>Laravel</c> → Sanctum API.
@@ -289,13 +424,42 @@
             </summary>
         </member>
         <member name="M:docusystem.Services.IApprovalService.BuildApprovalSteps(docusystem.Models.Proposal)">
-            <summary>Builds a read-only timeline from proposal fields returned by the API.</summary>
+            <summary>Builds a read-only timeline locally when <c>/api/proposals/{id}/workflow</c> is unavailable.</summary>
         </member>
         <member name="M:docusystem.Services.IApprovalService.ApproveProposalAsync(System.Int32,System.Threading.CancellationToken)">
-            <summary>TODO: POST /api/proposals/{id}/approve (Laravel route as designed).</summary>
+            <summary>POST /api/proposals/{id}/approve — signs the current stage on behalf of the user.</summary>
         </member>
         <member name="M:docusystem.Services.IApprovalService.ReturnProposalAsync(System.Int32,System.String,System.Threading.CancellationToken)">
-            <summary>TODO: POST /api/proposals/{id}/return-for-revision with remarks body.</summary>
+            <summary>POST /api/proposals/{id}/return — returns the proposal to the RSO with reviewer remarks.</summary>
+        </member>
+        <member name="M:docusystem.Services.IApprovalService.RejectProposalAsync(System.Int32,System.String,System.Threading.CancellationToken)">
+            <summary>POST /api/proposals/{id}/reject — terminal rejection with reason; only available to allowed roles.</summary>
+        </member>
+        <member name="T:docusystem.Services.IAttachmentService">
+            <summary>
+            File attachments tied to a proposal. Maps directly to the mobile API:
+            <list type="bullet">
+              <item><c>GET /api/proposals/{id}/attachments</c> → <see cref="M:docusystem.Services.IAttachmentService.GetAttachmentsAsync(System.Int32,System.Threading.CancellationToken)"/></item>
+              <item><c>GET /api/attachments/{id}/view</c> → <see cref="M:docusystem.Services.IAttachmentService.GetViewUrlAsync(System.Int32,System.Threading.CancellationToken)"/></item>
+              <item><c>GET /api/attachments/{id}/download</c> → <see cref="M:docusystem.Services.IAttachmentService.GetDownloadUrlAsync(System.Int32,System.Threading.CancellationToken)"/></item>
+              <item><c>GET /api/attachments/{id}/stream</c> (signed) → <see cref="M:docusystem.Services.IAttachmentService.GetStreamUrlAsync(System.Int32,System.Threading.CancellationToken)"/></item>
+            </list>
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.IAttachmentService.GetAttachmentsAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>List every attachment that belongs to the given proposal.</summary>
+        </member>
+        <member name="M:docusystem.Services.IAttachmentService.GetViewUrlAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>Returns a (typically signed) URL the OS file viewer can open in-browser.</summary>
+        </member>
+        <member name="M:docusystem.Services.IAttachmentService.GetDownloadUrlAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>Returns a (typically signed) URL that triggers a download.</summary>
+        </member>
+        <member name="M:docusystem.Services.IAttachmentService.GetStreamUrlAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Builds the public, signed <c>/api/attachments/{id}/stream</c> URL the controller hands out.
+            Use this when the backend returns a pre-signed link inside <see cref="P:docusystem.Models.ProposalAttachment.StreamUrl"/>.
+            </summary>
         </member>
         <member name="T:docusystem.Services.IAuthService">
             <summary>
@@ -304,15 +468,25 @@
         </member>
         <member name="M:docusystem.Services.IAuthService.LoginAsync(System.String,System.String,System.Threading.CancellationToken)">
             <summary>
-            On success, implementation stores the session via <see cref="M:docusystem.Services.ISessionService.SetFromLoginAsync(docusystem.Models.User,System.String,System.Threading.CancellationToken)"/>
-            (in-memory + secure storage) so the token is available for <c>LaravelApi</c> and other services.
+            POST /api/login (Sanctum). On success, implementation stores the session via
+            <see cref="M:docusystem.Services.ISessionService.SetFromLoginAsync(docusystem.Models.User,System.String,System.Threading.CancellationToken)"/> (in-memory + secure storage) so the
+            token is available for <c>LaravelApi</c> and other services.
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.IAuthService.RegisterAsync(docusystem.Services.RegisterRequest,System.Threading.CancellationToken)">
+            <summary>
+            POST /api/register — creates an account on the Laravel backend. On success, the same
+            session pipeline as <see cref="M:docusystem.Services.IAuthService.LoginAsync(System.String,System.String,System.Threading.CancellationToken)"/> is used so the user is signed in immediately.
             </summary>
         </member>
         <member name="M:docusystem.Services.IAuthService.LogoutAsync(System.Threading.CancellationToken)">
-            <summary>TODO: POST /api/logout and revoke token on server if applicable.</summary>
+            <summary>POST /api/logout — revokes the bearer token on the server (best-effort).</summary>
         </member>
         <member name="M:docusystem.Services.IAuthService.GetCurrentUserAsync(System.Threading.CancellationToken)">
-            <summary>TODO: GET /api/user — hydrate current user from token.</summary>
+            <summary>GET /api/user — hydrates the current user from the active token.</summary>
+        </member>
+        <member name="T:docusystem.Services.RegisterRequest">
+            <summary>Payload for <see cref="M:docusystem.Services.IAuthService.RegisterAsync(docusystem.Services.RegisterRequest,System.Threading.CancellationToken)"/> — sent to <c>POST /api/register</c>.</summary>
         </member>
         <member name="T:docusystem.Services.INotificationService">
             <summary>
@@ -320,10 +494,13 @@
             </summary>
         </member>
         <member name="M:docusystem.Services.INotificationService.GetNotificationsAsync(System.Threading.CancellationToken)">
-            <summary>TODO: GET /api/notifications — server scopes to authenticated user.</summary>
+            <summary>GET /api/notifications — server scopes to authenticated user.</summary>
         </member>
         <member name="M:docusystem.Services.INotificationService.MarkAsReadAsync(System.Int32,System.Threading.CancellationToken)">
-            <summary>TODO: PATCH /api/notifications/{id}/read</summary>
+            <summary>PATCH /api/notifications/{id}/read — marks a single notification as read.</summary>
+        </member>
+        <member name="M:docusystem.Services.INotificationService.MarkAllAsReadAsync(System.Threading.CancellationToken)">
+            <summary>PATCH /api/notifications/read-all — marks every notification for the user as read.</summary>
         </member>
         <member name="T:docusystem.Services.IProposalService">
             <summary>
@@ -331,13 +508,22 @@
             </summary>
         </member>
         <member name="M:docusystem.Services.IProposalService.GetPendingApprovalsAsync(System.Threading.CancellationToken)">
-            <summary>TODO: GET /api/proposals/pending (or equivalent) — backend filters by authenticated user.</summary>
+            <summary>GET /api/approvals/pending — backend filters by authenticated approver/role.</summary>
+        </member>
+        <member name="M:docusystem.Services.IProposalService.GetMySubmissionsAsync(System.Threading.CancellationToken)">
+            <summary>
+            GET proposals owned by the logged-in submitter (e.g. RSO President "my submissions" queue).
+            The implementation may probe multiple API paths depending on backend route naming.
+            </summary>
         </member>
         <member name="M:docusystem.Services.IProposalService.GetProposalByIdAsync(System.Int32,System.Threading.CancellationToken)">
-            <summary>TODO: GET /api/proposals/{id}</summary>
+            <summary>GET /api/proposals/{id} — full proposal payload (incl. nested fields when available).</summary>
+        </member>
+        <member name="M:docusystem.Services.IProposalService.GetProposalWorkflowAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>GET /api/proposals/{id}/workflow — server-driven approval timeline (preferred over local build).</summary>
         </member>
         <member name="M:docusystem.Services.IProposalService.UpdateProposalAsync(docusystem.Models.Proposal,System.Threading.CancellationToken)">
-            <summary>TODO: PUT/PATCH /api/proposals/{id}</summary>
+            <summary>PUT /api/proposals/{id} — kept for legacy edits; new flow uses field-reviews.</summary>
         </member>
         <member name="T:docusystem.Services.IRevisionService">
             <summary>
@@ -345,12 +531,33 @@
             </summary>
         </member>
         <member name="M:docusystem.Services.IRevisionService.GetRevisionHistoryAsync(System.Int32,System.Threading.CancellationToken)">
-            <summary>TODO: GET /api/proposals/{proposalId}/revisions (adjust route to your API).</summary>
+            <summary>GET /api/proposals/{proposalId}/revisions — unified revision timeline.</summary>
+        </member>
+        <member name="M:docusystem.Services.IRevisionService.GetFieldReviewsAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>GET /api/proposals/{proposalId}/field-reviews — current per-field passed/revision states.</summary>
         </member>
         <member name="M:docusystem.Services.IRevisionService.SubmitFieldChangesAsync(System.Int32,System.Collections.Generic.IReadOnlyList{docusystem.Services.FieldChange},System.Threading.CancellationToken)">
+            <summary>POST /api/proposals/{proposalId}/field-reviews — saves the approver's per-field decisions.</summary>
+        </member>
+        <member name="T:docusystem.Services.FieldChange">
             <summary>
-            TODO: Optional — POST field-level change log if your API records client-side edits separately.
+            Payload for one row inside <c>POST /api/proposals/{id}/field-reviews</c>.
+            Matches the validation rules in <c>ProposalRevisionController::storeFieldReviews</c>.
             </summary>
+        </member>
+        <member name="P:docusystem.Services.FieldChange.Status">
+            <summary><c>passed</c> or <c>revision</c>.</summary>
+        </member>
+        <member name="P:docusystem.Services.FieldChange.Comment">
+            <summary>Required when <see cref="P:docusystem.Services.FieldChange.Status"/> is <c>revision</c>.</summary>
+        </member>
+        <member name="T:docusystem.Services.FieldReviewEntry">
+            <summary>
+            Single field-review row returned by <c>GET /api/proposals/{id}/field-reviews</c>.
+            </summary>
+        </member>
+        <member name="P:docusystem.Services.FieldReviewEntry.Status">
+            <summary><c>passed</c> or <c>revision</c> (lowercase).</summary>
         </member>
         <member name="T:docusystem.Services.ISessionService">
             <summary>App-wide session: bearer token + user info for the logged-in user (memory + optional secure storage).</summary>
@@ -383,6 +590,9 @@
             <summary>
             Proposals — Laravel API or direct Supabase (<see cref="P:docusystem.Services.MobileDataOptions.Backend"/>).
             </summary>
+        </member>
+        <member name="M:docusystem.Services.ProposalService.DecorateProposal(docusystem.Models.Proposal)">
+            <summary>Projects nested API fields into canonical model props and infers flow type.</summary>
         </member>
         <member name="T:docusystem.Services.ProposalWorkflowService">
             <summary>

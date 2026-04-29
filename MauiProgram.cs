@@ -50,6 +50,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<INotificationService, NotificationService>();
 		builder.Services.AddSingleton<IRevisionService, RevisionService>();
 		builder.Services.AddSingleton<IApprovalService, ApprovalService>();
+		builder.Services.AddSingleton<IAttachmentService, AttachmentService>();
 
 		builder.Services.AddSingleton<AppShell>();
 
