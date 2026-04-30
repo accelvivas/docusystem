@@ -163,7 +163,7 @@
                 <VerticalStackLayout Spacing="10">
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Grid.Column="0"
-                               Text="Step 1: Activity Request Form"
+                               Text="Section 1: Submission Overview"
                                FontSize="14" FontAttributes="Bold"
                                TextColor="#1A2340"
                                VerticalTextAlignment="Center" />
@@ -185,7 +185,7 @@
                 <VerticalStackLayout Spacing="10">
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Grid.Column="0"
-                               Text="Step 2: Proposal Submission"
+                               Text="Section 2: Proposal Package"
                                FontSize="14" FontAttributes="Bold"
                                TextColor="#1A2340"
                                VerticalTextAlignment="Center" />
@@ -233,6 +233,12 @@
                         Padding="16,14"
                         IsVisible="False"
                         Clicked="OnSubmitFieldReviewClicked" />
+                <Label x:Name="SubmitFieldReviewHintLabel"
+                       Text="Please complete all field review decisions before submitting."
+                       FontSize="12"
+                       TextColor="#5A6A8A"
+                       LineBreakMode="WordWrap"
+                       IsVisible="False" />
 
                 <!-- Approval workflow -->
                 <VerticalStackLayout Spacing="10">

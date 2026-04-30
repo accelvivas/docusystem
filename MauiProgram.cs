@@ -43,6 +43,22 @@ public static class MauiProgram
 				client.Timeout = TimeSpan.FromSeconds(30);
 			});
 
+		// Same Laravel client but with auto-redirect disabled so the AttachmentService can
+		// capture the signed-URL Location header instead of streaming the file body back.
+		builder.Services.AddHttpClient("LaravelApiNoRedirect")
+			.AddHttpMessageHandler<LaravelAuthDelegatingHandler>()
+			.ConfigureHttpClient((sp, client) =>
+			{
+				var opts = sp.GetRequiredService<ApiEndpointOptions>();
+				client.BaseAddress = new Uri(ApiEndpointOptions.NormalizeBaseUrl(opts.LaravelBaseUrl));
+				client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
+				client.Timeout = TimeSpan.FromSeconds(30);
+			})
+			.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+			{
+				AllowAutoRedirect = false
+			});
+
 		builder.Services.AddSingleton<AppSessionService>();
 		builder.Services.AddSingleton<IAuthService, AuthService>();
 		builder.Services.AddSingleton<IApiService, ApiService>();

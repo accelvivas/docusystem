@@ -92,19 +92,24 @@ public sealed class ProposalService : IProposalService
 			var candidatePaths = new[]
 			{
 				"api/proposals/my-submissions",
+				"api/my-submissions",
 				"api/proposals/mine",
 				"api/proposals?scope=my_submissions",
 				"api/proposals?mine=1",
-				"api/proposals?owned=1"
+				"api/proposals?owned=1",
+				// Broad fallback: many Laravel controllers scope this to the authenticated user.
+				"api/proposals"
 			};
 
+			IReadOnlyList<Proposal> bestParsed = [];
 			for (var i = 0; i < candidatePaths.Length; i++)
 			{
 				using var response = await client.GetAsync(candidatePaths[i], cancellationToken).ConfigureAwait(false);
 				if (!response.IsSuccessStatusCode)
 				{
-					// Skip missing route variants; stop for explicit auth/validation failures.
-					if ((int)response.StatusCode is 401 or 403 or 422)
+					// Only 401 means the session/token is invalid. For 403/404/405/422,
+					// keep trying alternate route variants.
+					if ((int)response.StatusCode is 401)
 					{
 						return [];
 					}
@@ -114,13 +119,35 @@ public sealed class ProposalService : IProposalService
 
 				var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 				var parsed = ParseProposalList(json);
-				if (parsed.Count > 0)
+				if (parsed.Count == 0)
 				{
-					return parsed;
+					continue;
 				}
+
+				// Dedicated submitter routes are trusted as-is. The broad fallback
+				// (`api/proposals`) often lists all proposals visible to the user, so
+				// we filter client-side to keep only the current submitter's records
+				// (including ones already returned for revision).
+				var path = candidatePaths[i];
+				var isBroadFallback = path.Equals("api/proposals", StringComparison.OrdinalIgnoreCase);
+				if (isBroadFallback)
+				{
+					var owned = parsed
+						.Where(p => IsOwnedByCurrentUser(p, _session.CurrentUser))
+						.ToList();
+					if (owned.Count > 0)
+					{
+						return owned;
+					}
+
+					bestParsed = parsed;
+					continue;
+				}
+
+				return parsed;
 			}
 
-			return [];
+			return bestParsed;
 		}
 		catch (HttpRequestException)
 		{
@@ -146,14 +173,54 @@ public sealed class ProposalService : IProposalService
 		try
 		{
 			var client = _httpClientFactory.CreateClient("LaravelApi");
-			using var response = await client.GetAsync($"api/proposals/{proposalId}", cancellationToken).ConfigureAwait(false);
-			if (!response.IsSuccessStatusCode)
+
+			// Try the canonical detail endpoint first, then a few common Laravel variants
+			// in case the backend exposes proposal detail under a slightly different path.
+			var candidatePaths = new[]
 			{
-				return null;
+				$"api/proposals/{proposalId}",
+				$"api/proposals/{proposalId}?include=details",
+				$"api/proposals/{proposalId}/details",
+				$"api/proposals/{proposalId}/full",
+				$"api/approvals/proposals/{proposalId}"
+			};
+
+			Proposal? best = null;
+			for (var i = 0; i < candidatePaths.Length; i++)
+			{
+				using var response = await client.GetAsync(candidatePaths[i], cancellationToken).ConfigureAwait(false);
+				if (!response.IsSuccessStatusCode)
+				{
+					continue;
+				}
+
+				var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+				LogProposalKeys(candidatePaths[i], json);
+
+				var parsed = ParseSingleProposal(json);
+				if (parsed is null)
+				{
+					continue;
+				}
+
+				if (best is null)
+				{
+					best = parsed;
+				}
+				else
+				{
+					MergeProposalIntoBest(best, parsed);
+					// Re-run normalize so any wrapper objects we just merged in get flattened
+					// into top-level keys for downstream consumers.
+					DecorateProposal(best);
+				}
+
+				// Keep probing all candidate endpoints and merge everything we can.
+				// Some environments expose partial payloads on one path and full
+				// detail payloads on another; early exit can leave many fields blank.
 			}
 
-			var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-			return ParseSingleProposal(json);
+			return best;
 		}
 		catch (HttpRequestException)
 		{
@@ -253,6 +320,120 @@ public sealed class ProposalService : IProposalService
 		{
 			return ApiActionResult.Fail("Request timed out.");
 		}
+	}
+
+	public async Task<ApiActionResult> ResubmitProposalAsync(int proposalId, CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var client = _httpClientFactory.CreateClient("LaravelApi");
+
+			// Try the dedicated resubmit route first (POST). Falls back to PATCH/PUT shapes
+			// the backend may use for status changes when /resubmit is not implemented.
+			var attempts = new (HttpMethod Method, string Path, object? Body)[]
+			{
+				(HttpMethod.Post, $"api/proposals/{proposalId}/resubmit", new { }),
+				(HttpMethod.Post, $"api/proposals/{proposalId}/resubmit", new { status = "pending" }),
+				(HttpMethod.Patch, $"api/proposals/{proposalId}", new { status = "pending" }),
+				(HttpMethod.Put, $"api/proposals/{proposalId}", new { status = "pending" })
+			};
+
+			HttpResponseMessage? lastResponse = null;
+			for (var i = 0; i < attempts.Length; i++)
+			{
+				lastResponse?.Dispose();
+				using var request = new HttpRequestMessage(attempts[i].Method, attempts[i].Path)
+				{
+					Content = attempts[i].Body is null
+						? null
+						: JsonContent.Create(attempts[i].Body, options: JsonOptions)
+				};
+				lastResponse = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+				if (lastResponse.IsSuccessStatusCode)
+				{
+					lastResponse.Dispose();
+					return ApiActionResult.Ok("Proposal resubmitted.");
+				}
+
+				// 404/405 = route doesn't exist, try next variant. Stop on real failures.
+				if ((int)lastResponse.StatusCode is not (404 or 405))
+				{
+					break;
+				}
+			}
+
+			var body = lastResponse is null
+				? string.Empty
+				: await lastResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+			var statusCode = lastResponse is null ? 0 : (int)lastResponse.StatusCode;
+			lastResponse?.Dispose();
+
+			return ApiActionResult.Fail(ExtractMessage(body) ?? $"Could not resubmit ({statusCode}).");
+		}
+		catch (HttpRequestException)
+		{
+			return ApiActionResult.Fail("Cannot reach the server.");
+		}
+		catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+		{
+			return ApiActionResult.Fail("Request timed out.");
+		}
+	}
+
+	private static bool IsOwnedByCurrentUser(Proposal proposal, User? user)
+	{
+		if (user is null)
+		{
+			return false;
+		}
+
+		// RSO President scope: organization match is the strongest signal.
+		if (!string.IsNullOrWhiteSpace(user.OrganizationName) &&
+			!string.IsNullOrWhiteSpace(proposal.OrganizationName) &&
+			string.Equals(proposal.OrganizationName.Trim(), user.OrganizationName.Trim(), StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		if (!string.IsNullOrWhiteSpace(user.OrganizationName) &&
+			!string.IsNullOrWhiteSpace(proposal.OrganizationName))
+		{
+			var userOrg = user.OrganizationName.Trim();
+			var proposalOrg = proposal.OrganizationName.Trim();
+			if (proposalOrg.Contains(userOrg, StringComparison.OrdinalIgnoreCase) ||
+			    userOrg.Contains(proposalOrg, StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		// Fallback: API often stamps `submitted_by` with the user's display name or email.
+		var submitted = proposal.SubmittedBy ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(submitted))
+		{
+			return false;
+		}
+
+		var candidates = new[]
+		{
+			user.DisplayName,
+			user.Name,
+			user.FullName,
+			user.Email
+		};
+
+		for (var i = 0; i < candidates.Length; i++)
+		{
+			var c = candidates[i];
+			if (!string.IsNullOrWhiteSpace(c) &&
+				submitted.Contains(c, StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private bool IsSupabaseBackend() =>
@@ -358,6 +539,51 @@ public sealed class ProposalService : IProposalService
 			return list;
 		}
 
+		// Shape: { proposals: [...] }
+		if (root.TryGetProperty("proposals", out var proposals) && proposals.ValueKind == JsonValueKind.Array)
+		{
+			var list = proposals.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+			DecorateProposals(list);
+
+			return list;
+		}
+
+		// Shape: { data: { proposals: [...] } }
+		if (root.TryGetProperty("data", out var nestedData) &&
+		    nestedData.ValueKind == JsonValueKind.Object &&
+		    nestedData.TryGetProperty("proposals", out var nestedProposals) &&
+		    nestedProposals.ValueKind == JsonValueKind.Array)
+		{
+			var list = nestedProposals.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+			DecorateProposals(list);
+
+			return list;
+		}
+
+		// Shape: { data: { items: [...] } } (common paginator wrappers)
+		if (root.TryGetProperty("data", out var wrappedData) &&
+		    wrappedData.ValueKind == JsonValueKind.Object &&
+		    wrappedData.TryGetProperty("items", out var items) &&
+		    items.ValueKind == JsonValueKind.Array)
+		{
+			var list = items.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+			DecorateProposals(list);
+
+			return list;
+		}
+
+		// Shape: { results: [...] } / { rows: [...] } / { payload: [...] }
+		foreach (var key in new[] { "results", "rows", "payload" })
+		{
+			if (root.TryGetProperty(key, out var arr) && arr.ValueKind == JsonValueKind.Array)
+			{
+				var list = arr.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+				DecorateProposals(list);
+
+				return list;
+			}
+		}
+
 		return [];
 	}
 
@@ -371,17 +597,23 @@ public sealed class ProposalService : IProposalService
 		using var doc = JsonDocument.Parse(json);
 		var root = doc.RootElement;
 
-		// Shape A: direct object proposal payload
-		if (TryDeserializeProposal(root, out var direct))
-		{
-			DecorateProposal(direct!);
-			return direct;
-		}
-
-		// Shape B: { data: {...} } or { proposal: {...} }
+		// IMPORTANT:
+		// Try wrapper shapes first. Because Proposal has JsonExtensionData, directly
+		// deserializing the outer object (e.g. { data: {...} }) can "succeed" while
+		// actually producing an almost-empty proposal.
+		// Shape A: { data: {...} } / { data: { proposal: {...} } } / { proposal: {...} }
 		if (root.ValueKind == JsonValueKind.Object)
 		{
-			if (root.TryGetProperty("data", out var data) && TryDeserializeProposal(data, out var fromData))
+			if (root.TryGetProperty("data", out var data) &&
+			    data.ValueKind == JsonValueKind.Object &&
+			    data.TryGetProperty("proposal", out var nestedProposal) &&
+			    TryDeserializeProposal(nestedProposal, out var nested))
+			{
+				DecorateProposal(nested!);
+				return nested;
+			}
+
+			if (root.TryGetProperty("data", out var dataNode) && TryDeserializeProposal(dataNode, out var fromData))
 			{
 				DecorateProposal(fromData!);
 				return fromData;
@@ -393,15 +625,13 @@ public sealed class ProposalService : IProposalService
 				return fromProposal;
 			}
 
-			// Shape C: { data: { proposal: {...} } }
-			if (root.TryGetProperty("data", out var nestedData) &&
-			    nestedData.ValueKind == JsonValueKind.Object &&
-			    nestedData.TryGetProperty("proposal", out var nestedProposal) &&
-			    TryDeserializeProposal(nestedProposal, out var nested))
-			{
-				DecorateProposal(nested!);
-				return nested;
-			}
+		}
+
+		// Shape B: direct object proposal payload
+		if (TryDeserializeProposal(root, out var direct))
+		{
+			DecorateProposal(direct!);
+			return direct;
 		}
 
 		return null;
@@ -456,6 +686,122 @@ public sealed class ProposalService : IProposalService
 		}
 
 		return null;
+	}
+
+	/// <summary>
+	/// Keys that signal a "detailed" proposal payload (not just queue summary). When the API
+	/// returns at least one of these, we stop probing alternate detail endpoints.
+	/// </summary>
+	private static readonly string[] DetailKeys =
+	[
+		"proposed_start_date", "proposed_end_date", "proposed_start_time", "proposed_end_time",
+		"target_sdg", "source_of_funding", "school_code", "program", "activity_types",
+		"overall_goal", "specific_objectives", "criteria_mechanics", "program_flow",
+		"academic_term", "estimated_budget", "venue", "activity_description", "budget_items_payload"
+	];
+
+	private static bool HasDetailFields(Proposal? p)
+	{
+		if (p is null) return false;
+		if (!string.IsNullOrWhiteSpace(p.Description)) return true;
+		if (!string.IsNullOrWhiteSpace(p.Venue)) return true;
+		if (p.ActivityDate != default) return true;
+		if (p.Budget > 0m) return true;
+
+		var ext = p.ExtraData;
+		if (ext is null) return false;
+		for (var i = 0; i < DetailKeys.Length; i++)
+		{
+			if (ext.ContainsKey(DetailKeys[i]))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static void MergeProposalIntoBest(Proposal best, Proposal extra)
+	{
+		// Fill canonical fields first.
+		if (string.IsNullOrWhiteSpace(best.Title) && !string.IsNullOrWhiteSpace(extra.Title)) best.Title = extra.Title;
+		if (string.IsNullOrWhiteSpace(best.OrganizationName) && !string.IsNullOrWhiteSpace(extra.OrganizationName)) best.OrganizationName = extra.OrganizationName;
+		if (string.IsNullOrWhiteSpace(best.SubmittedBy) && !string.IsNullOrWhiteSpace(extra.SubmittedBy)) best.SubmittedBy = extra.SubmittedBy;
+		if (string.IsNullOrWhiteSpace(best.CurrentStage) && !string.IsNullOrWhiteSpace(extra.CurrentStage)) best.CurrentStage = extra.CurrentStage;
+		if (string.IsNullOrWhiteSpace(best.Description) && !string.IsNullOrWhiteSpace(extra.Description)) best.Description = extra.Description;
+		if (string.IsNullOrWhiteSpace(best.Venue) && !string.IsNullOrWhiteSpace(extra.Venue)) best.Venue = extra.Venue;
+		if (string.IsNullOrWhiteSpace(best.Status) && !string.IsNullOrWhiteSpace(extra.Status)) best.Status = extra.Status;
+		if (best.ActivityDate == default && extra.ActivityDate != default) best.ActivityDate = extra.ActivityDate;
+		if (best.SubmittedDate == default && extra.SubmittedDate != default) best.SubmittedDate = extra.SubmittedDate;
+		if (best.Budget == 0m && extra.Budget > 0m) best.Budget = extra.Budget;
+
+		// Merge extension data — keys present in `extra` but missing in `best` get added.
+		if (extra.ExtraData is not null)
+		{
+			best.ExtraData ??= new();
+			foreach (var kv in extra.ExtraData)
+			{
+				if (!best.ExtraData.ContainsKey(kv.Key))
+				{
+					best.ExtraData[kv.Key] = kv.Value;
+				}
+			}
+		}
+	}
+
+	[System.Diagnostics.Conditional("DEBUG")]
+	private static void LogProposalKeys(string path, string json)
+	{
+		try
+		{
+			using var doc = JsonDocument.Parse(json);
+			var root = doc.RootElement;
+			JsonElement target = root;
+			if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var data))
+			{
+				target = data.ValueKind == JsonValueKind.Object ? data : root;
+			}
+			if (target.ValueKind != JsonValueKind.Object)
+			{
+				return;
+			}
+
+			// Top-level keys.
+			var keys = new List<string>();
+			foreach (var prop in target.EnumerateObject())
+			{
+				keys.Add(prop.Name);
+			}
+			System.Diagnostics.Debug.WriteLine($"[PROPOSAL KEYS @ {path}] {string.Join(", ", keys)}");
+
+			// Nested wrapper keys — many backend payloads nest the real fields inside one of
+			// these, so log their child keys to make mismatches obvious in the debug output.
+			string[] wrappers =
+			[
+				"proposal", "proposal_data", "details",
+				"activity_request_form", "proposal_form", "request_form",
+				"data", "attributes", "form", "form_data"
+			];
+			for (var i = 0; i < wrappers.Length; i++)
+			{
+				if (!target.TryGetProperty(wrappers[i], out var w) || w.ValueKind != JsonValueKind.Object)
+				{
+					continue;
+				}
+
+				var sub = new List<string>();
+				foreach (var prop in w.EnumerateObject())
+				{
+					sub.Add(prop.Name);
+				}
+				if (sub.Count > 0)
+				{
+					System.Diagnostics.Debug.WriteLine($"[PROPOSAL NESTED \"{wrappers[i]}\" KEYS @ {path}] {string.Join(", ", sub)}");
+				}
+			}
+		}
+		catch
+		{
+		}
 	}
 
 }

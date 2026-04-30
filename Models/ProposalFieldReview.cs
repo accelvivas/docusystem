@@ -9,6 +9,7 @@ public class ProposalFieldReview
 	public string Value { get; set; } = string.Empty;
 	public string StepKey { get; set; } = "step1";
 	public bool IsFile { get; set; }
+	public ProposalAttachment? Attachment { get; set; }
 	public List<BudgetTableRow> BudgetRows { get; set; } = [];
 	public FieldReviewState State { get; set; } = FieldReviewState.Pending;
 	public string RevisionNote { get; set; } = string.Empty;

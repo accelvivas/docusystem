@@ -24,6 +24,13 @@ public interface IProposalService
 
 	/// <summary>PUT /api/proposals/{id} — kept for legacy edits; new flow uses field-reviews.</summary>
 	Task<ApiActionResult> UpdateProposalAsync(Proposal proposal, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// POST /api/proposals/{id}/resubmit — RSO President resubmits a returned proposal back to the
+	/// signatory that returned it. Backend keeps the current stage and flips the status to pending.
+	/// Falls back to PUT /api/proposals/{id} when no dedicated route exists.
+	/// </summary>
+	Task<ApiActionResult> ResubmitProposalAsync(int proposalId, CancellationToken cancellationToken = default);
 }
 
 public sealed class ApiActionResult

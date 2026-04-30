@@ -56,9 +56,7 @@ public partial class DashboardPage : ContentPage
 			: currentUser.Role;
 		ResponsibilityHintLabel.Text = BuildResponsibilityLine(currentUser.Role);
 
-		var proposals = IsSubmitterLane(currentUser)
-			? (await _proposalService.GetMySubmissionsAsync()).ToList()
-			: (await _proposalService.GetPendingApprovalsAsync()).ToList();
+		var proposals = (await _proposalService.GetPendingApprovalsAsync()).ToList();
 		var hasLiveData = proposals.Count > 0;
 		var weekStart = DateTime.Today.AddDays(-7);
 
@@ -108,11 +106,6 @@ public partial class DashboardPage : ContentPage
 
 	private static string BuildResponsibilityLine(string role)
 	{
-		if (string.Equals(role, "RSO President", StringComparison.OrdinalIgnoreCase))
-		{
-			return "Submit and update proposals; reviewers sign off by stage.";
-		}
-
 		return "Review proposals when they reach your stage (Pending Approvals).";
 	}
 
@@ -150,14 +143,6 @@ public partial class DashboardPage : ContentPage
 		}
 
 		return string.Join('\n', lines);
-	}
-
-	private static bool IsSubmitterLane(User user)
-	{
-		return string.Equals(user.Role, "RSO President", StringComparison.OrdinalIgnoreCase) ||
-		       string.Equals(user.Role, "Organization Officer", StringComparison.OrdinalIgnoreCase) ||
-		       string.Equals(user.RoleKey, "rso_president", StringComparison.OrdinalIgnoreCase) ||
-		       string.Equals(user.RoleKey, "org_officer", StringComparison.OrdinalIgnoreCase);
 	}
 
 	/// <summary>Dashboard → full Pending Approvals list (All).</summary>

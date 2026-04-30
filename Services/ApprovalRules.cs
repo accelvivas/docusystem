@@ -64,9 +64,7 @@ public static class ApprovalRules
 		}
 
 		var atTheirStage = string.Equals(proposal.CurrentStage, user.Role, StringComparison.OrdinalIgnoreCase);
-		var canActAsReviewer = atTheirStage &&
-			(string.Equals(proposal.Status, "Under Review", StringComparison.OrdinalIgnoreCase) ||
-			 string.Equals(proposal.Status, "Submitted", StringComparison.OrdinalIgnoreCase));
+		var canActAsReviewer = atTheirStage && IsActionableStatus(proposal.Status);
 
 		proposal.CanEdit = canActAsReviewer;
 		proposal.CanApprove = canActAsReviewer;
@@ -90,4 +88,20 @@ public static class ApprovalRules
 
 	public static bool CanApprove(User? user, Proposal? proposal) =>
 		user is not null && proposal is not null && proposal.CanApprove;
+
+	// Statuses where the current-stage signatory is allowed to act on the proposal.
+	// Backend normalizes lowercase "pending" to "Pending" via Proposal.NormalizeStatus, and the
+	// approval queue endpoint ships items in that state, so we accept it alongside the
+	// older "Under Review" / "Submitted" labels.
+	private static bool IsActionableStatus(string? status)
+	{
+		if (string.IsNullOrWhiteSpace(status))
+		{
+			return false;
+		}
+
+		return string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(status, "Under Review", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(status, "Submitted", StringComparison.OrdinalIgnoreCase);
+	}
 }

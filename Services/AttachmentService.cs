@@ -66,7 +66,10 @@ public sealed class AttachmentService : IAttachmentService
 	{
 		try
 		{
-			var client = _httpClientFactory.CreateClient("LaravelApi");
+			// "NoRedirect" client keeps the 3xx so we can lift the signed URL out of the Location
+			// header. With auto-redirect on, HttpClient would silently follow it and we'd end up
+			// downloading the file body instead of returning a viewer-friendly URL.
+			var client = _httpClientFactory.CreateClient("LaravelApiNoRedirect");
 			using var request = new HttpRequestMessage(HttpMethod.Get, relativePath);
 			using var response = await client
 				.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)

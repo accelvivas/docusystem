@@ -14,10 +14,12 @@ public partial class ProposalDetailsPage : ContentPage
 	private readonly IProposalService _proposalService;
 	private readonly IApprovalService _approvalService;
 	private readonly IRevisionService _revisionService;
+	private readonly IAttachmentService _attachmentService;
 
 	private Proposal? _proposal;
 	private List<ApprovalStep> _steps = [];
 	private List<ProposalFieldReview> _fields = [];
+	private List<ProposalAttachment> _attachments = [];
 
 	// Workflow stage selected in the horizontal track
 	private int _selectedStepIndex;
@@ -37,13 +39,15 @@ public partial class ProposalDetailsPage : ContentPage
 		AppSessionService session,
 		IProposalService proposalService,
 		IApprovalService approvalService,
-		IRevisionService revisionService)
+		IRevisionService revisionService,
+		IAttachmentService attachmentService)
 	{
 		InitializeComponent();
 		_session = session;
 		_proposalService = proposalService;
 		_approvalService = approvalService;
 		_revisionService = revisionService;
+		_attachmentService = attachmentService;
 	}
 
 	protected override async void OnAppearing()
@@ -81,7 +85,8 @@ public partial class ProposalDetailsPage : ContentPage
 		_proposal.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(_proposal);
 
 		_steps = _approvalService.BuildApprovalSteps(_proposal).ToList();
-		_fields = BuildFieldList(_proposal);
+		_attachments = await LoadAttachmentsForReviewAsync(_proposal.Id);
+		_fields = BuildFieldList(_proposal, _attachments);
 		// Default: select the current signatory step (or -1 = Submitted node when no steps yet).
 		_selectedStepIndex = FindCurrentStepIndex();
 
@@ -94,6 +99,111 @@ public partial class ProposalDetailsPage : ContentPage
 		BuildWorkflowTrack();
 		BindSelectedStageCard();
 		BuildWorkflowLogs();
+		UpdateSubmitButtonState();
+
+	}
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// Attachments
+	// ──────────────────────────────────────────────────────────────────────────
+
+	private async Task<List<ProposalAttachment>> LoadAttachmentsForReviewAsync(int proposalId)
+	{
+		try
+		{
+			var list = await _attachmentService.GetAttachmentsAsync(proposalId).ConfigureAwait(true);
+			return list.ToList();
+		}
+		catch (Exception)
+		{
+			return [];
+		}
+	}
+
+	private async Task OpenAttachmentAsync(ProposalAttachment att, bool asDownload)
+	{
+		try
+		{
+			var url = await ResolveAttachmentUrlAsync(att, asDownload);
+			if (string.IsNullOrWhiteSpace(url))
+			{
+				await DisplayAlertAsync(
+					"Cannot open file",
+					"This file isn't available right now. The signed link may have expired — please refresh and try again.",
+					"OK");
+				return;
+			}
+
+			if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+			{
+				await DisplayAlertAsync("Cannot open file", "The file link is invalid.", "OK");
+				return;
+			}
+
+			await Launcher.Default.OpenAsync(uri);
+		}
+		catch (Exception)
+		{
+			await DisplayAlertAsync(
+				"Cannot open file",
+				"Something went wrong while opening this file. Please check your connection and try again.",
+				"OK");
+		}
+	}
+
+	private async Task<string?> ResolveAttachmentUrlAsync(ProposalAttachment att, bool asDownload)
+	{
+		// Prefer URLs the API embedded in the listing — these are typically already signed.
+		if (asDownload)
+		{
+			if (IsAbsoluteUrl(att.DownloadUrl))
+			{
+				return att.DownloadUrl;
+			}
+		}
+		else
+		{
+			if (IsAbsoluteUrl(att.StreamUrl))
+			{
+				return att.StreamUrl;
+			}
+			if (IsAbsoluteUrl(att.ViewUrl))
+			{
+				return att.ViewUrl;
+			}
+		}
+
+		// Fallback: ask the API to mint a fresh signed URL.
+		return asDownload
+			? await _attachmentService.GetDownloadUrlAsync(att.Id)
+			: await _attachmentService.GetViewUrlAsync(att.Id) ?? await _attachmentService.GetStreamUrlAsync(att.Id);
+	}
+
+	private static bool IsAbsoluteUrl(string? url) =>
+		!string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out _);
+
+	private static string FormatFileType(string fileType)
+	{
+		var trimmed = fileType.Replace('_', ' ').Trim();
+		if (string.IsNullOrEmpty(trimmed))
+		{
+			return string.Empty;
+		}
+		return char.ToUpperInvariant(trimmed[0]) + trimmed[1..];
+	}
+
+	private static string FormatBytes(long bytes)
+	{
+		if (bytes < 1024)
+		{
+			return $"{bytes} B";
+		}
+		double kb = bytes / 1024.0;
+		if (kb < 1024)
+		{
+			return $"{kb:N1} KB";
+		}
+		return $"{kb / 1024.0:N1} MB";
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
@@ -130,12 +240,13 @@ public partial class ProposalDetailsPage : ContentPage
 		ReturnedRemarksPanel.IsVisible = isReturned && !string.IsNullOrWhiteSpace(_proposal.LastRemarks);
 		ReturnedRemarksBodyLabel.Text = _proposal.LastRemarks?.Trim() ?? string.Empty;
 
-		var isPresident = string.Equals(user?.Role, "RSO President", StringComparison.OrdinalIgnoreCase);
-		ResubmitBtn.IsVisible = isPresident && isReturned;
+		// Approvers-only app mode: resubmit is handled in submitter/web side, not here.
+		ResubmitBtn.IsVisible = false;
 
 		ApprovalRules.ApplyWorkflowPermissions(_proposal, user);
 		var canApprove = !isFullyApproved && ApprovalRules.CanApprove(user, _proposal);
 		SubmitFieldReviewBtn.IsVisible = canApprove;
+		UpdateSubmitButtonState();
 	}
 
 	private string ResolveCurrentApprover()
@@ -191,57 +302,118 @@ public partial class ProposalDetailsPage : ContentPage
 	// Fields
 	// ──────────────────────────────────────────────────────────────────────────
 
-	private static List<ProposalFieldReview> BuildFieldList(Proposal p)
+	private static List<ProposalFieldReview> BuildFieldList(Proposal p, IReadOnlyList<ProposalAttachment> attachments)
 	{
 		var ext = p.ExtraData;
-		var actDate = p.ActivityDate == default ? "—" : p.ActivityDate.ToString("MMM dd, yyyy");
-		var endDate = p.ActivityDate == default ? "—" : p.ActivityDate.AddDays(1).ToString("MMM dd, yyyy");
-		var proposedDates = FirstNonEmpty(
-			GetExtraString(ext, "proposed_dates"),
-			GetExtraString(ext, "proposal_dates"),
-			$"{actDate} – {endDate}");
-		var proposedTime = FirstNonEmpty(
-			GetExtraString(ext, "proposed_time"),
-			GetExtraString(ext, "activity_time"),
+
+		// Activity dates: prefer real start/end from API; fall back to ActivityDate alone.
+		// Try multiple Laravel naming variants for start/end date.
+		var startDate = p.ActivityDate == default
+			? ReadExtraDateAny(ext, "proposed_start_date", "date_of_activity", "start_date", "date_from", "activity_start_date", "activity_date_start")
+			: p.ActivityDate;
+		var endDate = ReadExtraDateAny(ext, "proposed_end_date", "end_date", "date_to", "activity_end_date", "activity_date_end");
+		var dateOfActivity = startDate.HasValue ? startDate.Value.ToString("MMM dd, yyyy") : "—";
+		var proposedDates = FormatDateRange(startDate, endDate,
+			GetExtraStringAny(ext, "proposed_dates", "proposal_dates", "activity_dates"));
+
+		// Activity time range: prefer the explicit start/end pair from the API.
+		var startTime = GetExtraStringAny(ext, "proposed_start_time", "start_time", "time_from", "time_start");
+		var endTime = GetExtraStringAny(ext, "proposed_end_time", "end_time", "time_to", "time_end");
+		var proposedTime = FormatTimeRange(startTime, endTime,
+			GetExtraStringAny(ext, "proposed_time", "activity_time"));
+
+		// Academic term comes through as a nested object: { academic_year, semester }.
+		var academicYearRaw = FirstNonEmpty(
+			GetNestedExtraString(ext, "academic_term", "academic_year"),
+			GetExtraStringAny(ext, "academic_year", "school_year", "ay"),
 			"—");
-		var academicYear = FirstNonEmpty(GetExtraString(ext, "academic_year"), "2026-2027");
-		var department = FirstNonEmpty(GetExtraString(ext, "department"), "—");
-		var program = FirstNonEmpty(GetExtraString(ext, "program"), "—");
-		var overallGoal = FirstNonEmpty(GetExtraString(ext, "overall_goal"), p.Description);
-		var specificObjectives = FirstNonEmpty(GetExtraString(ext, "specific_objectives"), "—");
-		var criteriaMechanics = FirstNonEmpty(GetExtraString(ext, "criteria_mechanics"), "—");
-		var programFlow = FirstNonEmpty(GetExtraString(ext, "program_flow"), "—");
-		var sourceOfFunding = FirstNonEmpty(GetExtraString(ext, "source_of_funding"), "RSO Fund");
+		var semesterRaw = FirstNonEmpty(
+			GetNestedExtraString(ext, "academic_term", "semester"),
+			GetExtraString(ext, "semester"),
+			string.Empty);
+		var academicYear = string.IsNullOrWhiteSpace(semesterRaw) || academicYearRaw == "—"
+			? academicYearRaw
+			: $"{academicYearRaw} • {FormatSemester(semesterRaw)}";
+
+		// "Department" maps cleanest to organization.college_school; school_code is a fallback.
+		var department = FirstNonEmpty(
+			GetNestedExtraString(ext, "organization", "college_school"),
+			GetNestedExtraString(ext, "organization", "college"),
+			GetNestedExtraString(ext, "organization", "school"),
+			GetExtraStringAny(ext, "school_code", "department", "college", "college_school", "school", "college_name"),
+			"—");
+
+		var program = FirstNonEmpty(
+			GetExtraStringAny(ext, "program", "course", "program_of_study", "program_name"),
+			"—");
+		var overallGoal = FirstNonEmpty(
+			GetExtraStringAny(ext, "overall_goal", "goal", "objective_overall"),
+			p.Description);
+		var specificObjectives = FirstNonEmpty(
+			GetExtraStringAny(ext, "specific_objectives", "objectives", "specific_objective", "specific_goals"),
+			"—");
+		var criteriaMechanics = FirstNonEmpty(
+			GetExtraStringAny(ext, "criteria_mechanics", "mechanics", "criteria", "criteria_and_mechanics", "mechanics_criteria"),
+			"—");
+		var programFlow = FirstNonEmpty(
+			GetExtraStringAny(ext, "program_flow", "activity_flow", "flow", "program_of_activities", "schedule_of_activities"),
+			"—");
+		var sourceOfFunding = FirstNonEmpty(
+			GetExtraStringAny(ext, "source_of_funding", "funding_source", "budget_source", "source_of_funds", "fund_source"),
+			"—");
+		var targetSdg = FirstNonEmpty(
+			GetExtraStringAny(ext, "target_sdg", "target_sdgs", "sdg", "sdgs", "sdg_target", "sustainable_development_goals"),
+			"—");
+		// Prefer explicit backend field for nature, fall back to inferred flow type.
+		var explicitNature = GetExtraStringAny(ext, "nature_of_activity", "nature", "activity_nature");
+		var natureOfActivity = !string.IsNullOrWhiteSpace(explicitNature)
+			? explicitNature
+			: (p.ApprovalFlowType == ApprovalFlowType.Academic ? "Curricular" : "Non-curricular");
+		var typeOfActivity = FirstNonEmpty(
+			GetExtraStringAny(ext, "activity_types", "activity_type", "type_of_activity", "activity_kind", "type", "category"),
+			"—");
+		var partnerEntities = FirstNonEmpty(
+			GetExtraStringAny(ext, "partner_entities", "partners", "partner_organizations", "collaborators", "partner", "partner_entity"),
+			"—");
+		var proposalOption = FirstNonEmpty(
+			GetExtraStringAny(ext,
+				"proposal_option", "calendar_status", "is_in_calendar",
+				"in_calendar", "is_calendar_event", "calendar_inclusion"),
+			"—");
 
 		var budgetRows = GetBudgetRows(ext, p.Budget);
 		var totalFromRows = budgetRows.Sum(r => r.Price);
 		var budgetTotal = totalFromRows > 0 ? totalFromRows : p.Budget;
+		var requestLetterAttachment = FindAttachment(attachments, "request_letter", "upload_request_letter", "request-letter");
+		var resumeAttachment = FindAttachment(attachments, "resume", "resume_of_speaker");
+		var postSurveyAttachment = FindAttachment(attachments, "post_survey_form", "sample_post_survey_form", "post-survey");
+		var organizationLogoAttachment = FindAttachment(attachments, "organization_logo", "org_logo", "logo");
 
 		return
 		[
 			// ── Section 1: Submission overview ─────────────────────────────
-			new() { StepKey = "step1", Label = "Proposal Option",       Value = "Activity not in submitted calendar" },
-			new() { StepKey = "step1", Label = "RSO Name",              Value = p.OrganizationName },
-			new() { StepKey = "step1", Label = "Title of Activity",     Value = p.Title },
-			new() { StepKey = "step1", Label = "Partner Entities",      Value = "—" },
-			new() { StepKey = "step1", Label = "Nature of Activity",    Value = "Non-curricular" },
-			new() { StepKey = "step1", Label = "Type of Activity",      Value = "Competition" },
-			new() { StepKey = "step1", Label = "Target SDG",            Value = "SDG 4, SDG 8" },
-			new() { StepKey = "step1", Label = "Step 1 Proposed Budget",Value = $"PHP {p.Budget:N2}" },
-			new() { StepKey = "step1", Label = "Step 1 Budget Source",  Value = "RSO Fund" },
-			new() { StepKey = "step1", Label = "Date of Activity",      Value = actDate },
+			new() { StepKey = "step1", Label = "Proposal Option",       Value = proposalOption },
+			new() { StepKey = "step1", Label = "RSO Name",              Value = string.IsNullOrWhiteSpace(p.OrganizationName) ? "—" : p.OrganizationName },
+			new() { StepKey = "step1", Label = "Title of Activity",     Value = string.IsNullOrWhiteSpace(p.Title) ? "—" : p.Title },
+			new() { StepKey = "step1", Label = "Partner Entities",      Value = partnerEntities },
+			new() { StepKey = "step1", Label = "Nature of Activity",    Value = natureOfActivity },
+			new() { StepKey = "step1", Label = "Type of Activity",      Value = typeOfActivity },
+			new() { StepKey = "step1", Label = "Target SDG",            Value = targetSdg },
+			new() { StepKey = "step1", Label = "Step 1 Proposed Budget",Value = p.Budget > 0 ? $"PHP {p.Budget:N2}" : "—" },
+			new() { StepKey = "step1", Label = "Step 1 Budget Source",  Value = sourceOfFunding },
+			new() { StepKey = "step1", Label = "Date of Activity",      Value = dateOfActivity },
 			new() { StepKey = "step1", Label = "Venue",                 Value = string.IsNullOrWhiteSpace(p.Venue) ? "—" : p.Venue },
-			new() { StepKey = "step1", Label = "Upload Request Letter", Value = "Submitted file attached.", IsFile = true },
-			new() { StepKey = "step1", Label = "Resume of Speaker",     Value = "Submitted file attached.", IsFile = true },
-			new() { StepKey = "step1", Label = "Sample Post-Survey Form", Value = "Submitted file attached.", IsFile = true },
+			new() { StepKey = "step1", Label = "Upload Request Letter", Value = BuildAttachmentValue(requestLetterAttachment), IsFile = true, Attachment = requestLetterAttachment },
+			new() { StepKey = "step1", Label = "Resume of Speaker",     Value = BuildAttachmentValue(resumeAttachment), IsFile = true, Attachment = resumeAttachment },
+			new() { StepKey = "step1", Label = "Sample Post-Survey Form", Value = BuildAttachmentValue(postSurveyAttachment), IsFile = true, Attachment = postSurveyAttachment },
 
 			// ── Step 2: Proposal Submission ────────────────────────────────
-			new() { StepKey = "step2", Label = "Organization Logo",     Value = "Submitted file attached.", IsFile = true },
-			new() { StepKey = "step2", Label = "Organization",          Value = p.OrganizationName },
+			new() { StepKey = "step2", Label = "Organization Logo",     Value = BuildAttachmentValue(organizationLogoAttachment), IsFile = true, Attachment = organizationLogoAttachment },
+			new() { StepKey = "step2", Label = "Organization",          Value = string.IsNullOrWhiteSpace(p.OrganizationName) ? "—" : p.OrganizationName },
 			new() { StepKey = "step2", Label = "Academic Year",         Value = academicYear },
 			new() { StepKey = "step2", Label = "Department",            Value = department },
 			new() { StepKey = "step2", Label = "Program",               Value = program },
-			new() { StepKey = "step2", Label = "Project / Activity Title", Value = p.Title },
+			new() { StepKey = "step2", Label = "Project / Activity Title", Value = string.IsNullOrWhiteSpace(p.Title) ? "—" : p.Title },
 			new() { StepKey = "step2", Label = "Proposed Dates",        Value = proposedDates },
 			new() { StepKey = "step2", Label = "Proposed Time",         Value = proposedTime },
 			new() { StepKey = "step2", Label = "Venue",                 Value = string.IsNullOrWhiteSpace(p.Venue) ? "—" : p.Venue },
@@ -249,7 +421,7 @@ public partial class ProposalDetailsPage : ContentPage
 			new() { StepKey = "step2", Label = "Specific Objectives",   Value = specificObjectives },
 			new() { StepKey = "step2", Label = "Criteria / Mechanics",  Value = criteriaMechanics },
 			new() { StepKey = "step2", Label = "Program Flow",          Value = programFlow },
-			new() { StepKey = "step2", Label = "Proposed Budget (Total)", Value = $"PHP {budgetTotal:N2}" },
+			new() { StepKey = "step2", Label = "Proposed Budget (Total)", Value = budgetTotal > 0 ? $"PHP {budgetTotal:N2}" : "—" },
 			new() { StepKey = "step2", Label = "Source of Funding",     Value = sourceOfFunding },
 			new()
 			{
@@ -259,6 +431,328 @@ public partial class ProposalDetailsPage : ContentPage
 				BudgetRows = budgetRows
 			},
 		];
+	}
+
+	private static DateTime? ReadExtraDate(Dictionary<string, JsonElement>? ext, string key)
+	{
+		if (ext is null || !ext.TryGetValue(key, out var el) || el.ValueKind != JsonValueKind.String)
+		{
+			return null;
+		}
+
+		var s = el.GetString();
+		if (DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+			System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+			out var dt))
+		{
+			return dt;
+		}
+		return null;
+	}
+
+	private static DateTime? ReadExtraDateAny(Dictionary<string, JsonElement>? ext, params string[] keys)
+	{
+		if (ext is null) return null;
+		for (var i = 0; i < keys.Length; i++)
+		{
+			var v = ReadExtraDate(ext, keys[i]);
+			if (v.HasValue) return v;
+		}
+		for (var i = 0; i < keys.Length; i++)
+		{
+			if (TryGetDeepValue(ext, keys[i], out var deep) &&
+			    deep.ValueKind == JsonValueKind.String &&
+			    DateTime.TryParse(
+				    deep.GetString(),
+				    System.Globalization.CultureInfo.InvariantCulture,
+				    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+				    out var dt))
+			{
+				return dt;
+			}
+		}
+		return null;
+	}
+
+	private static string? GetExtraStringAny(Dictionary<string, JsonElement>? ext, params string[] keys)
+	{
+		if (ext is null) return null;
+		for (var i = 0; i < keys.Length; i++)
+		{
+			var v = GetExtraString(ext, keys[i]);
+			if (!string.IsNullOrWhiteSpace(v)) return v;
+		}
+		for (var i = 0; i < keys.Length; i++)
+		{
+			if (TryGetDeepValue(ext, keys[i], out var deep))
+			{
+				var deepString = ValueToString(deep);
+				if (!string.IsNullOrWhiteSpace(deepString))
+				{
+					return deepString;
+				}
+			}
+		}
+		return null;
+	}
+
+	private static string? GetNestedExtraString(Dictionary<string, JsonElement>? ext, string parent, string child)
+	{
+		if (ext is null || !ext.TryGetValue(parent, out var p) || p.ValueKind != JsonValueKind.Object)
+		{
+			if (ext is null)
+			{
+				return null;
+			}
+
+			if (TryGetDeepNestedValue(ext, parent, child, out var deepNested))
+			{
+				return ValueToString(deepNested);
+			}
+
+			return null;
+		}
+
+		if (!p.TryGetProperty(child, out var v))
+		{
+			return null;
+		}
+
+		return v.ValueKind switch
+		{
+			JsonValueKind.String => v.GetString(),
+			JsonValueKind.Number => v.ToString(),
+			_ => null
+		};
+	}
+
+	private static string? ValueToString(JsonElement value)
+	{
+		return value.ValueKind switch
+		{
+			JsonValueKind.String => value.GetString(),
+			JsonValueKind.Number => value.ToString(),
+			JsonValueKind.True => "Yes",
+			JsonValueKind.False => "No",
+			JsonValueKind.Array => JoinArrayElements(value),
+			_ => null
+		};
+	}
+
+	private static bool TryGetDeepValue(Dictionary<string, JsonElement> ext, string key, out JsonElement value)
+	{
+		if (ext.TryGetValue(key, out value))
+		{
+			return true;
+		}
+
+		foreach (var kv in ext)
+		{
+			if (TryGetDeepValueFromNode(kv.Value, key, out value))
+			{
+				return true;
+			}
+		}
+
+		value = default;
+		return false;
+	}
+
+	private static bool TryGetDeepValueFromNode(JsonElement node, string key, out JsonElement value)
+	{
+		switch (node.ValueKind)
+		{
+			case JsonValueKind.Object:
+				foreach (var child in node.EnumerateObject())
+				{
+					if (string.Equals(child.Name, key, StringComparison.OrdinalIgnoreCase))
+					{
+						value = child.Value;
+						return true;
+					}
+				}
+				foreach (var child in node.EnumerateObject())
+				{
+					if (TryGetDeepValueFromNode(child.Value, key, out value))
+					{
+						return true;
+					}
+				}
+				break;
+			case JsonValueKind.Array:
+				foreach (var item in node.EnumerateArray())
+				{
+					if (TryGetDeepValueFromNode(item, key, out value))
+					{
+						return true;
+					}
+				}
+				break;
+		}
+
+		value = default;
+		return false;
+	}
+
+	private static bool TryGetDeepNestedValue(Dictionary<string, JsonElement> ext, string parent, string child, out JsonElement value)
+	{
+		foreach (var kv in ext)
+		{
+			if (TryGetDeepNestedValueFromNode(kv.Value, parent, child, out value))
+			{
+				return true;
+			}
+		}
+
+		value = default;
+		return false;
+	}
+
+	private static bool TryGetDeepNestedValueFromNode(JsonElement node, string parent, string child, out JsonElement value)
+	{
+		switch (node.ValueKind)
+		{
+			case JsonValueKind.Object:
+				foreach (var prop in node.EnumerateObject())
+				{
+					if (string.Equals(prop.Name, parent, StringComparison.OrdinalIgnoreCase) &&
+					    prop.Value.ValueKind == JsonValueKind.Object &&
+					    TryGetPropertyCaseInsensitive(prop.Value, child, out value))
+					{
+						return true;
+					}
+				}
+				foreach (var prop in node.EnumerateObject())
+				{
+					if (TryGetDeepNestedValueFromNode(prop.Value, parent, child, out value))
+					{
+						return true;
+					}
+				}
+				break;
+			case JsonValueKind.Array:
+				foreach (var item in node.EnumerateArray())
+				{
+					if (TryGetDeepNestedValueFromNode(item, parent, child, out value))
+					{
+						return true;
+					}
+				}
+				break;
+		}
+
+		value = default;
+		return false;
+	}
+
+	private static bool TryGetPropertyCaseInsensitive(JsonElement obj, string propertyName, out JsonElement value)
+	{
+		if (obj.ValueKind == JsonValueKind.Object)
+		{
+			foreach (var prop in obj.EnumerateObject())
+			{
+				if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+				{
+					value = prop.Value;
+					return true;
+				}
+			}
+		}
+
+		value = default;
+		return false;
+	}
+
+	private static string FormatDateRange(DateTime? start, DateTime? end, params string?[] fallbacks)
+	{
+		if (start.HasValue && end.HasValue && end.Value.Date != start.Value.Date)
+		{
+			return $"{start.Value:MMM dd, yyyy} – {end.Value:MMM dd, yyyy}";
+		}
+		if (start.HasValue)
+		{
+			return start.Value.ToString("MMM dd, yyyy");
+		}
+		if (end.HasValue)
+		{
+			return end.Value.ToString("MMM dd, yyyy");
+		}
+		return FirstNonEmpty(fallbacks);
+	}
+
+	private static string FormatTimeRange(string? start, string? end, params string?[] fallbacks)
+	{
+		var hasStart = !string.IsNullOrWhiteSpace(start);
+		var hasEnd = !string.IsNullOrWhiteSpace(end);
+		if (hasStart && hasEnd)
+		{
+			return $"{NormalizeTime(start!)} – {NormalizeTime(end!)}";
+		}
+		if (hasStart)
+		{
+			return NormalizeTime(start!);
+		}
+		if (hasEnd)
+		{
+			return NormalizeTime(end!);
+		}
+		return FirstNonEmpty(fallbacks);
+	}
+
+	private static string NormalizeTime(string raw)
+	{
+		// Try a few common formats coming from Laravel: "HH:mm:ss", "HH:mm", "h:mm tt".
+		if (DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var t))
+		{
+			return t.ToString("h:mm tt");
+		}
+		return raw.Trim();
+	}
+
+	private static string FormatSemester(string raw)
+	{
+		var trimmed = raw.Trim();
+		return trimmed.ToLowerInvariant() switch
+		{
+			"first" => "1st Semester",
+			"1st" => "1st Semester",
+			"second" => "2nd Semester",
+			"2nd" => "2nd Semester",
+			"summer" => "Summer",
+			_ => trimmed
+		};
+	}
+
+	private static ProposalAttachment? FindAttachment(IReadOnlyList<ProposalAttachment> attachments, params string[] typeHints)
+	{
+		if (attachments.Count == 0)
+		{
+			return null;
+		}
+
+		for (var i = 0; i < attachments.Count; i++)
+		{
+			var type = attachments[i].FileType ?? string.Empty;
+			for (var j = 0; j < typeHints.Length; j++)
+			{
+				if (type.Contains(typeHints[j], StringComparison.OrdinalIgnoreCase))
+				{
+					return attachments[i];
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private static string BuildAttachmentValue(ProposalAttachment? attachment)
+	{
+		if (attachment is null)
+		{
+			return "No uploaded file found.";
+		}
+
+		return attachment.DisplayName;
 	}
 
 	private static string FirstNonEmpty(params string?[] values)
@@ -284,15 +778,50 @@ public partial class ProposalDetailsPage : ContentPage
 		{
 			JsonValueKind.String => el.GetString(),
 			JsonValueKind.Number => el.ToString(),
+			JsonValueKind.True => "Yes",
+			JsonValueKind.False => "No",
+			JsonValueKind.Array => JoinArrayElements(el),
 			_ => null
 		};
+	}
+
+	private static string? JoinArrayElements(JsonElement arr)
+	{
+		var items = new List<string>();
+		foreach (var entry in arr.EnumerateArray())
+		{
+			switch (entry.ValueKind)
+			{
+				case JsonValueKind.String:
+					var s = entry.GetString();
+					if (!string.IsNullOrWhiteSpace(s)) items.Add(s.Trim());
+					break;
+				case JsonValueKind.Number:
+					items.Add(entry.ToString());
+					break;
+				case JsonValueKind.Object:
+					// Common Laravel pattern: list of related objects with a `name`/`title` property.
+					var labelGuess =
+						(entry.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null) ??
+						(entry.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null) ??
+						(entry.TryGetProperty("label", out var l) && l.ValueKind == JsonValueKind.String ? l.GetString() : null);
+					if (!string.IsNullOrWhiteSpace(labelGuess)) items.Add(labelGuess!.Trim());
+					break;
+			}
+		}
+		return items.Count == 0 ? null : string.Join(", ", items);
 	}
 
 	private static List<BudgetTableRow> GetBudgetRows(Dictionary<string, JsonElement>? ext, decimal fallbackBudget)
 	{
 		if (ext is not null)
 		{
-			var keys = new[] { "detailed_budget_table", "budget_rows", "budget_table", "budget_items", "materials" };
+			var keys = new[]
+			{
+				"detailed_budget_table", "budget_rows", "budget_table", "budget_items",
+				"materials", "proposed_budget_items", "budget_breakdown", "budget_items_payload", "items",
+				"budget", "budgets"
+			};
 			for (var i = 0; i < keys.Length; i++)
 			{
 				if (TryParseBudgetRows(ext, keys[i], out var rows) && rows.Count > 0)
@@ -302,13 +831,20 @@ public partial class ProposalDetailsPage : ContentPage
 			}
 		}
 
+		// Empty list when there are no real rows — the field card simply shows the
+		// summary line without a fabricated row.
+		if (fallbackBudget <= 0)
+		{
+			return [];
+		}
+
 		return
 		[
 			new BudgetTableRow
 			{
 				Material = "pc",
 				Quantity = 10.00m,
-				UnitPrice = fallbackBudget <= 0 ? 0 : fallbackBudget / 10.00m
+				UnitPrice = fallbackBudget / 10.00m
 			}
 		];
 	}
@@ -519,14 +1055,29 @@ public partial class ProposalDetailsPage : ContentPage
 
 		if (field.IsFile)
 		{
-			var fileLink = new Label
+			var fileMeta = new Label
 			{
-				Text = "Open / Download file ↗",
+				Text = field.Attachment is null ? "No uploaded file found." : field.Value,
 				FontSize = 11,
-				TextColor = PrimaryColor,
-				TextDecorations = TextDecorations.Underline
+				TextColor = Color.FromArgb("#5A6A8A"),
+				LineBreakMode = LineBreakMode.WordWrap
 			};
-			labelStack.Children.Add(fileLink);
+			labelStack.Children.Add(fileMeta);
+
+			if (field.Attachment is not null)
+			{
+				var openLink = new Label
+				{
+					Text = "Open / Download file ↗",
+					FontSize = 11,
+					TextColor = PrimaryColor,
+					TextDecorations = TextDecorations.Underline
+				};
+				var tap = new TapGestureRecognizer();
+				tap.Tapped += async (_, _) => await OpenAttachmentAsync(field.Attachment, asDownload: false);
+				openLink.GestureRecognizers.Add(tap);
+				labelStack.Children.Add(openLink);
+			}
 		}
 
 		Grid.SetColumn(labelStack, 0);
@@ -560,6 +1111,7 @@ public partial class ProposalDetailsPage : ContentPage
 		{
 			_fields[index].RevisionNote = e.NewTextValue ?? string.Empty;
 			UpdateReviewSummary();
+			UpdateSubmitButtonState();
 		};
 
 		var hintLabel = new Label
@@ -653,6 +1205,38 @@ public partial class ProposalDetailsPage : ContentPage
 		UpdateReviewSummary();
 		UpdateStepBadges();
 		RefreshComputedStatusBadge();
+		UpdateSubmitButtonState();
+	}
+
+	private void UpdateSubmitButtonState()
+	{
+		if (!SubmitFieldReviewBtn.IsVisible)
+		{
+			SubmitFieldReviewBtn.IsEnabled = false;
+			SubmitFieldReviewHintLabel.IsVisible = false;
+			return;
+		}
+
+		var hasAnyFields = _fields.Count > 0;
+		var undecidedCount = _fields.Count(f => f.State == FieldReviewState.Pending);
+		var revisionMissingNoteCount = _fields.Count(f =>
+			f.State == FieldReviewState.Revision &&
+			string.IsNullOrWhiteSpace(f.RevisionNote));
+		var canSubmit = hasAnyFields && undecidedCount == 0 && revisionMissingNoteCount == 0;
+
+		SubmitFieldReviewBtn.IsEnabled = canSubmit;
+		SubmitFieldReviewBtn.Opacity = canSubmit ? 1.0 : 0.55;
+
+		if (canSubmit)
+		{
+			SubmitFieldReviewHintLabel.IsVisible = false;
+			return;
+		}
+
+		SubmitFieldReviewHintLabel.IsVisible = true;
+		SubmitFieldReviewHintLabel.Text = revisionMissingNoteCount > 0
+			? "Please add revision notes for all fields marked as Revision before submitting."
+			: "Please complete all field review decisions before submitting.";
 	}
 
 	private bool IsAllStepsPassed() => StepAllPassed("step1") && StepAllPassed("step2");
@@ -988,6 +1572,19 @@ public partial class ProposalDetailsPage : ContentPage
 			return;
 		}
 
+		SubmitFieldReviewBtn.IsEnabled = false;
+
+		var undecided = _fields.Where(f => f.State == FieldReviewState.Pending).ToList();
+		if (undecided.Count > 0)
+		{
+			await DisplayAlertAsync(
+				"Incomplete field review",
+				$"{undecided.Count} field(s) are still missing a decision. Mark each required field as Passed or Revision before submitting.",
+				"OK");
+			UpdateSubmitButtonState();
+			return;
+		}
+
 		// Validate: revision fields must have a note
 		var missing = _fields.Where(f => f.State == FieldReviewState.Revision
 		                                 && string.IsNullOrWhiteSpace(f.RevisionNote)).ToList();
@@ -998,6 +1595,7 @@ public partial class ProposalDetailsPage : ContentPage
 				$"{missing.Count} field(s) marked for revision still need a note:\n" +
 				string.Join('\n', missing.Select(f => $"• {f.Label}")),
 				"OK");
+			UpdateSubmitButtonState();
 			return;
 		}
 
@@ -1013,12 +1611,13 @@ public partial class ProposalDetailsPage : ContentPage
 			if (!result.Success)
 			{
 				await DisplayAlertAsync("Could not return", result.Message ?? "Please try again.", "OK");
+				UpdateSubmitButtonState();
 				return;
 			}
 
-			_proposal.Status = "Returned for Revision";
-			_proposal.LastRemarks = remarks;
 			await DisplayAlertAsync("Returned for revision", "Revision notes were sent to the RSO.", "OK");
+			await Shell.Current.GoToAsync("//pendingapprovals");
+			return;
 		}
 		else
 		{
@@ -1026,27 +1625,14 @@ public partial class ProposalDetailsPage : ContentPage
 			if (!result.Success)
 			{
 				await DisplayAlertAsync("Could not approve", result.Message ?? "Please try again.", "OK");
+				UpdateSubmitButtonState();
 				return;
 			}
 
-			// Advance to the next stage locally so the UI updates immediately.
-			var currentIdx = FindCurrentStepIndex();
-			if (currentIdx >= 0 && currentIdx < _steps.Count - 1)
-			{
-				_proposal.CurrentStage = _steps[currentIdx + 1].RoleName;
-				_proposal.Status = "Approved";
-			}
-			else
-			{
-				_proposal.Status = "Fully Approved";
-				_proposal.FullyApprovedAt = DateTime.Now;
-			}
-
 			await DisplayAlertAsync("Approved", "The proposal moves to the next stage.", "OK");
+			await Shell.Current.GoToAsync("//pendingapprovals");
+			return;
 		}
-
-		_session.SetSelectedProposal(_proposal);
-		await LoadAsync();
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
@@ -1066,18 +1652,23 @@ public partial class ProposalDetailsPage : ContentPage
 			return;
 		}
 
-		var firstStage = ProposalWorkflowService.GetStages(_proposal.ApprovalFlowType)[0];
-		_proposal.Status = "Under Review";
-		_proposal.CurrentStage = firstStage;
-		var result = await _proposalService.UpdateProposalAsync(_proposal);
+		// The proposal must go back to the signatory who returned it (whoever holds the
+		// current stage), NOT the first stage. The backend keeps `current_stage` at that
+		// signatory while the proposal is in "Returned for Revision"; we only flip the
+		// status back to pending so it appears in their queue again.
+		var returningStage = string.IsNullOrWhiteSpace(_proposal.CurrentStage)
+			? ProposalWorkflowService.GetStages(_proposal.ApprovalFlowType)[0]
+			: _proposal.CurrentStage;
+
+		var result = await _proposalService.ResubmitProposalAsync(_proposal.Id);
 		if (!result.Success)
 		{
 			await DisplayAlertAsync("Could not resubmit", result.Message ?? "Please try again.", "OK");
 			return;
 		}
 
-		await DisplayAlertAsync("Resubmitted", $"The proposal is back at {firstStage}.", "OK");
-		await LoadAsync();
+		await DisplayAlertAsync("Resubmitted", $"The proposal is back at {returningStage}.", "OK");
+		await Shell.Current.GoToAsync("//pendingapprovals");
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────

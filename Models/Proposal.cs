@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Text.Json;
+using System.Linq;
 
 namespace docusystem.Models;
 
@@ -86,25 +87,37 @@ public class Proposal
 			return;
 		}
 
+		// Flatten so keys nested under common wrappers (e.g. proposal_data, details,
+		// activity_request_form, proposal_form, request_form) are visible at the top
+		// level. Existing keys win — we never overwrite real values.
+		p.ExtraData = FlattenExtraData(p.ExtraData);
 		var ext = p.ExtraData;
 
 		if (ext is not null)
 		{
+			if (p.Id == 0)
+			{
+				p.Id =
+					ReadInt(ext, "id", "proposal_id") ??
+					ReadNestedInt(ext, "proposal", "id") ??
+					p.Id;
+			}
+
 			if (string.IsNullOrWhiteSpace(p.Title))
 			{
-				p.Title = ReadString(ext, "proposal_title", "activity_title") ?? p.Title;
+				p.Title = ReadString(ext, "proposal_title", "activity_title", "title_of_activity", "project_title") ?? p.Title;
 			}
 
 			if (string.IsNullOrWhiteSpace(p.Description))
 			{
-				p.Description = ReadString(ext, "activity_description") ?? p.Description;
+				p.Description = ReadString(ext, "activity_description", "overall_goal", "description") ?? p.Description;
 			}
 
 			if (string.IsNullOrWhiteSpace(p.OrganizationName))
 			{
 				p.OrganizationName =
 					ReadNestedString(ext, "organization", "name", "organization_name") ??
-					ReadString(ext, "organization_name") ??
+					ReadString(ext, "organization_name", "rso_name", "org_name") ??
 					p.OrganizationName;
 			}
 
@@ -112,7 +125,7 @@ public class Proposal
 			{
 				p.SubmittedBy =
 					ReadNestedString(ext, "submitted_by", "name") ??
-					ReadString(ext, "submitted_by_name") ??
+					ReadString(ext, "submitted_by_name", "submitter_name") ??
 					p.SubmittedBy;
 			}
 
@@ -127,25 +140,27 @@ public class Proposal
 			if (p.SubmittedDate == default)
 			{
 				p.SubmittedDate =
-					ReadDateTime(ext, "submission_date", "submitted_at", "submitted_date", "pending_since") ??
+					ReadDateTime(ext, "submission_date", "submitted_at", "submitted_date", "pending_since", "created_at") ??
 					p.SubmittedDate;
 			}
 
 			if (p.ActivityDate == default)
 			{
 				p.ActivityDate =
-					ReadDateTime(ext, "proposed_start_date", "activity_date") ??
+					ReadDateTime(ext, "proposed_start_date", "activity_date", "date_of_activity", "start_date", "date_from", "activity_start_date") ??
 					p.ActivityDate;
 			}
 
 			if (p.Budget == 0m)
 			{
-				p.Budget = ReadDecimal(ext, "estimated_budget") ?? p.Budget;
+				p.Budget = ReadDecimal(ext,
+					"estimated_budget", "proposed_budget", "total_budget", "budget_total",
+					"budget_amount", "amount") ?? p.Budget;
 			}
 
 			if (string.IsNullOrWhiteSpace(p.Venue))
 			{
-				p.Venue = ReadString(ext, "venue") ?? p.Venue;
+				p.Venue = ReadString(ext, "venue", "activity_venue", "location", "place") ?? p.Venue;
 			}
 
 			if (string.IsNullOrWhiteSpace(p.LastRemarks))
@@ -155,6 +170,80 @@ public class Proposal
 		}
 
 		p.Status = NormalizeStatus(p.Status);
+	}
+
+	/// <summary>
+	/// Promotes properties from common wrapper objects (e.g. <c>proposal_data</c>,
+	/// <c>details</c>, <c>activity_request_form</c>, <c>proposal_form</c>) up to the top level
+	/// so consumers reading raw keys don't have to know which wrapper held them. Top-level
+	/// keys always win — we never overwrite a value that was already present.
+	/// </summary>
+	public static Dictionary<string, JsonElement>? FlattenExtraData(Dictionary<string, JsonElement>? ext)
+	{
+		if (ext is null)
+		{
+			return null;
+		}
+
+		var flat = new Dictionary<string, JsonElement>(ext, StringComparer.OrdinalIgnoreCase);
+		string[] wrapperKeys =
+		[
+			"proposal_data", "proposal", "data", "details",
+			"activity_request_form", "proposal_form", "request_form",
+			"attributes", "meta", "form", "form_data"
+		];
+
+		// Recursive-style flattening: keep promoting child keys from wrapper objects
+		// until no new keys are added. This handles nested shapes like:
+		// { data: { activity_request_form: { ... }, proposal_form: { ... } } }.
+		var added = true;
+		while (added)
+		{
+			added = false;
+			for (var i = 0; i < wrapperKeys.Length; i++)
+			{
+				if (!flat.TryGetValue(wrapperKeys[i], out var el) || el.ValueKind != JsonValueKind.Object)
+				{
+					continue;
+				}
+
+				foreach (var prop in el.EnumerateObject())
+				{
+					if (!flat.ContainsKey(prop.Name))
+					{
+						flat[prop.Name] = prop.Value;
+						added = true;
+					}
+				}
+			}
+		}
+
+		// Broad safety net: also promote keys from any object-valued node so we can
+		// still read details when the backend uses a wrapper name we didn't list.
+		added = true;
+		while (added)
+		{
+			added = false;
+			var snapshot = flat.ToArray();
+			for (var i = 0; i < snapshot.Length; i++)
+			{
+				if (snapshot[i].Value.ValueKind != JsonValueKind.Object)
+				{
+					continue;
+				}
+
+				foreach (var child in snapshot[i].Value.EnumerateObject())
+				{
+					if (!flat.ContainsKey(child.Name))
+					{
+						flat[child.Name] = child.Value;
+						added = true;
+					}
+				}
+			}
+		}
+
+		return flat;
 	}
 
 	/// <summary>
@@ -208,6 +297,10 @@ public class Proposal
 			else if (el.ValueKind == JsonValueKind.Number)
 			{
 				return el.ToString();
+			}
+			else if (el.ValueKind == JsonValueKind.True || el.ValueKind == JsonValueKind.False)
+			{
+				return el.GetBoolean() ? "Yes" : "No";
 			}
 		}
 
@@ -281,9 +374,85 @@ public class Proposal
 			}
 
 			if (el.ValueKind == JsonValueKind.String &&
-				decimal.TryParse(el.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var ds))
+				TryParseDecimalLoose(el.GetString(), out var ds))
 			{
 				return ds;
+			}
+		}
+
+		return null;
+	}
+
+	private static bool TryParseDecimalLoose(string? raw, out decimal value)
+	{
+		value = 0m;
+		if (string.IsNullOrWhiteSpace(raw))
+		{
+			return false;
+		}
+
+		if (decimal.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value))
+		{
+			return true;
+		}
+
+		var cleanedChars = raw.Where(c => char.IsDigit(c) || c == '.' || c == '-' || c == ',').ToArray();
+		if (cleanedChars.Length == 0)
+		{
+			return false;
+		}
+
+		var cleaned = new string(cleanedChars).Replace(",", string.Empty, StringComparison.Ordinal);
+		return decimal.TryParse(cleaned, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value);
+	}
+
+	private static int? ReadInt(Dictionary<string, JsonElement> ext, params string[] keys)
+	{
+		for (var i = 0; i < keys.Length; i++)
+		{
+			if (!ext.TryGetValue(keys[i], out var el))
+			{
+				continue;
+			}
+
+			if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n))
+			{
+				return n;
+			}
+
+			if (el.ValueKind == JsonValueKind.String &&
+				int.TryParse(el.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var ns))
+			{
+				return ns;
+			}
+		}
+
+		return null;
+	}
+
+	private static int? ReadNestedInt(Dictionary<string, JsonElement> ext, string parentKey, params string[] childKeys)
+	{
+		if (!ext.TryGetValue(parentKey, out var parent) || parent.ValueKind != JsonValueKind.Object)
+		{
+			return null;
+		}
+
+		for (var i = 0; i < childKeys.Length; i++)
+		{
+			if (!parent.TryGetProperty(childKeys[i], out var v))
+			{
+				continue;
+			}
+
+			if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n))
+			{
+				return n;
+			}
+
+			if (v.ValueKind == JsonValueKind.String &&
+				int.TryParse(v.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var ns))
+			{
+				return ns;
 			}
 		}
 

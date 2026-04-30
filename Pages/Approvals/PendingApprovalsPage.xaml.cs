@@ -45,7 +45,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		base.OnAppearing();
 		try
 		{
-			ApplyRoleHeaderCopy();
+			ApplyApproverHeaderCopy();
 			SetLoadingState(true);
 			InitializeFilterDefaults();
 			await LoadProposalsAsync();
@@ -84,9 +84,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 			return;
 		}
 
-		var proposals = IsRsoPresident(currentUser)
-			? (await _proposalService.GetMySubmissionsAsync()).ToList()
-			: (await _proposalService.GetPendingApprovalsAsync()).ToList();
+		var proposals = (await _proposalService.GetPendingApprovalsAsync()).ToList();
 
 		_allProposals = proposals
 			.OrderByDescending(p => string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase))
@@ -94,27 +92,8 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 			.ToList();
 	}
 
-	private static bool IsRsoPresident(User user)
+	private void ApplyApproverHeaderCopy()
 	{
-		// Support both explicit rso_president and org_officer-style identities
-		// that still represent submitter lanes in some backends.
-		return string.Equals(user.Role, "RSO President", StringComparison.OrdinalIgnoreCase) ||
-		       string.Equals(user.Role, "Organization Officer", StringComparison.OrdinalIgnoreCase) ||
-		       string.Equals(user.RoleKey, "rso_president", StringComparison.OrdinalIgnoreCase) ||
-		       string.Equals(user.RoleKey, "org_officer", StringComparison.OrdinalIgnoreCase);
-	}
-
-	private void ApplyRoleHeaderCopy()
-	{
-		var isSubmitterLane = _session.CurrentUser is User u && IsRsoPresident(u);
-		if (isSubmitterLane)
-		{
-			Title = "My Submissions";
-			PendingPageTitleLabel.Text = "My Submissions";
-			PendingPageSubtitleLabel.Text = "Track your submitted proposals and revision follow-ups.";
-			return;
-		}
-
 		Title = "Pending Approvals";
 		PendingPageTitleLabel.Text = "My Pending Approvals";
 		PendingPageSubtitleLabel.Text = "Only documents currently routed to your role are shown.";
@@ -165,9 +144,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 
 		if (proposalsToDisplay.Count == 0)
 		{
-			var emptyMsg = string.Equals(_session.CurrentUser?.Role, "RSO President", StringComparison.OrdinalIgnoreCase)
-				? "No proposals for your student organization in this list.\n\nIf you just signed in, confirm you are using the account that matches your org. Pull down to refresh."
-				: "Nothing to review right now.\n\nPull down to refresh.";
+			var emptyMsg = "Nothing to review right now.\n\nPull down to refresh.";
 			ProposalsStack.Children.Add(
 				new Label
 				{

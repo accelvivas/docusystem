@@ -95,6 +95,14 @@
             model. Safe to call multiple times — each canonical field is filled only when empty.
             </summary>
         </member>
+        <member name="M:docusystem.Models.Proposal.FlattenExtraData(System.Collections.Generic.Dictionary{System.String,System.Text.Json.JsonElement})">
+            <summary>
+            Promotes properties from common wrapper objects (e.g. <c>proposal_data</c>,
+            <c>details</c>, <c>activity_request_form</c>, <c>proposal_form</c>) up to the top level
+            so consumers reading raw keys don't have to know which wrapper held them. Top-level
+            keys always win — we never overwrite a value that was already present.
+            </summary>
+        </member>
         <member name="M:docusystem.Models.Proposal.NormalizeStatus(System.String)">
             <summary>
             Maps lowercase Laravel status enums (<c>pending</c>, <c>under_review</c>,
@@ -525,6 +533,13 @@
         <member name="M:docusystem.Services.IProposalService.UpdateProposalAsync(docusystem.Models.Proposal,System.Threading.CancellationToken)">
             <summary>PUT /api/proposals/{id} — kept for legacy edits; new flow uses field-reviews.</summary>
         </member>
+        <member name="M:docusystem.Services.IProposalService.ResubmitProposalAsync(System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            POST /api/proposals/{id}/resubmit — RSO President resubmits a returned proposal back to the
+            signatory that returned it. Backend keeps the current stage and flips the status to pending.
+            Falls back to PUT /api/proposals/{id} when no dedicated route exists.
+            </summary>
+        </member>
         <member name="T:docusystem.Services.IRevisionService">
             <summary>
             Proposal revision / audit log from Laravel.
@@ -593,6 +608,12 @@
         </member>
         <member name="M:docusystem.Services.ProposalService.DecorateProposal(docusystem.Models.Proposal)">
             <summary>Projects nested API fields into canonical model props and infers flow type.</summary>
+        </member>
+        <member name="F:docusystem.Services.ProposalService.DetailKeys">
+            <summary>
+            Keys that signal a "detailed" proposal payload (not just queue summary). When the API
+            returns at least one of these, we stop probing alternate detail endpoints.
+            </summary>
         </member>
         <member name="T:docusystem.Services.ProposalWorkflowService">
             <summary>
