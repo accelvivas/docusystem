@@ -48,7 +48,7 @@ public static class ProposalWorkflowService
 		var stages = GetStages(flowType);
 		for (var i = 0; i < stages.Count; i++)
 		{
-			if (string.Equals(stages[i], stageName, StringComparison.OrdinalIgnoreCase))
+			if (StageNamesEquivalent(stages[i], stageName))
 			{
 				return i;
 			}
@@ -58,10 +58,16 @@ public static class ProposalWorkflowService
 	}
 
 	public static bool RoleAppearsInFlow(string roleName, ApprovalFlowType flowType) =>
-		GetStages(flowType).Any(s => string.Equals(s, roleName, StringComparison.OrdinalIgnoreCase));
+		GetStages(flowType).Any(s => StageNamesEquivalent(s, roleName));
 
 	public static bool IsAnySignatoryRole(string roleName) =>
-		AllSignatoryRoles.Any(s => string.Equals(s, roleName, StringComparison.OrdinalIgnoreCase));
+		AllSignatoryRoles.Any(s => StageNamesEquivalent(s, roleName));
+
+	/// <summary>
+	/// Public alias-aware role comparison for permission checks.
+	/// </summary>
+	public static bool IsEquivalentRole(string? left, string? right) =>
+		StageNamesEquivalent(left, right);
 
 	public static string GetEventTypeDisplay(ApprovalFlowType flowType) =>
 		flowType == ApprovalFlowType.NonAcademic ? "Non-curricular" : "Curricular";
@@ -138,6 +144,42 @@ public static class ProposalWorkflowService
 			JsonValueKind.Number => el.ToString(),
 			_ => null
 		};
+	}
+
+	/// <summary>
+	/// Accept backend/staff aliases for the same SDAO stages.
+	/// This keeps flow logic working when APIs return "SDAO Staff"
+	/// while the configured stage labels are "SDAO Assistant"/"SDAO Coordinator".
+	/// </summary>
+	private static bool StageNamesEquivalent(string? left, string? right)
+	{
+		if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+		{
+			return false;
+		}
+
+		var l = NormalizeStageKey(left);
+		var r = NormalizeStageKey(right);
+		return string.Equals(l, r, StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static string NormalizeStageKey(string raw)
+	{
+		var key = raw.Trim().ToLowerInvariant();
+		key = key.Replace("_", " ", StringComparison.Ordinal);
+		key = key.Replace("-", " ", StringComparison.Ordinal);
+		while (key.Contains("  ", StringComparison.Ordinal))
+		{
+			key = key.Replace("  ", " ", StringComparison.Ordinal);
+		}
+
+		// Shared SDAO alias bucket
+		if (key is "sdao staff" or "sdao assistant" or "sdao coordinator")
+		{
+			return "sdao staff";
+		}
+
+		return key;
 	}
 
 	private static string? FirstNonEmpty(params string?[] values)

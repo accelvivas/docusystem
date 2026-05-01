@@ -8,12 +8,28 @@
     <Grid RowDefinitions="Auto,Auto,Auto,*">
 
         <!-- Navy Page Header -->
-        <Grid Grid.Row="0" BackgroundColor="#003087" Padding="18,16,18,20">
-            <VerticalStackLayout Spacing="4">
+        <Grid Grid.Row="0" BackgroundColor="#003087" Padding="18,16,18,20" ColumnDefinitions="*,Auto">
+            <VerticalStackLayout Grid.Column="0" Spacing="4">
                 <Label Text="Notifications" FontSize="20" FontAttributes="Bold" TextColor="White" />
-                <Label Text="Approval and revision updates. Unread items are highlighted."
+                <Label Text="Approver workflow updates for pending, returned, approved, and status changes."
                        FontSize="12" TextColor="White" Opacity="0.9" LineBreakMode="WordWrap" />
             </VerticalStackLayout>
+            <Border Grid.Column="1"
+                    BackgroundColor="#FFFFFF22"
+                    Stroke="#FFFFFF55"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 10"
+                    Padding="10,6"
+                    VerticalOptions="Center">
+                <HorizontalStackLayout Spacing="6">
+                    <Label Text="Unread" FontSize="11" TextColor="White" />
+                    <Label x:Name="UnreadCountLabel"
+                           Text="0"
+                           FontSize="12"
+                           FontAttributes="Bold"
+                           TextColor="White" />
+                </HorizontalStackLayout>
+            </Border>
         </Grid>
 
         <!-- Filter Card -->
@@ -27,25 +43,30 @@
                             Clicked="OnFilterClicked"
                             ClassId="All" />
                     <Button Style="{StaticResource ChipButton}"
-                            x:Name="FilterUnreadBtn"
-                            Text="Unread"
-                            Clicked="OnFilterClicked"
-                            ClassId="Unread" />
-                    <Button Style="{StaticResource ChipButton}"
                             x:Name="FilterApprovalBtn"
-                            Text="Approvals"
+                            Text="Pending"
                             Clicked="OnFilterClicked"
-                            ClassId="ApprovalUpdate" />
+                            ClassId="Pending" />
                     <Button Style="{StaticResource ChipButton}"
                             x:Name="FilterRevisionBtn"
-                            Text="Revisions"
+                            Text="Returned"
                             Clicked="OnFilterClicked"
-                            ClassId="RevisionUpdate" />
+                            ClassId="Returned" />
                     <Button Style="{StaticResource ChipButton}"
-                            x:Name="FilterFinalBtn"
-                            Text="Final Approval"
+                            x:Name="FilterApprovedBtn"
+                            Text="Approved"
                             Clicked="OnFilterClicked"
-                            ClassId="FinalApproval" />
+                            ClassId="Approved" />
+                    <Button Style="{StaticResource ChipButton}"
+                            x:Name="FilterRejectedBtn"
+                            Text="Rejected"
+                            Clicked="OnFilterClicked"
+                            ClassId="Rejected" />
+                    <Button Style="{StaticResource ChipButton}"
+                            x:Name="FilterStatusBtn"
+                            Text="Status Updates"
+                            Clicked="OnFilterClicked"
+                            ClassId="StatusUpdates" />
                 </HorizontalStackLayout>
             </ScrollView>
         </Border>
@@ -53,6 +74,13 @@
         <VerticalStackLayout Grid.Row="2"
                              Padding="16,8,16,0"
                              Spacing="6">
+            <Button x:Name="MarkAllReadBtn"
+                    Text="Mark all as read"
+                    FontSize="12"
+                    HorizontalOptions="End"
+                    Clicked="OnMarkAllReadClicked"
+                    IsVisible="False"
+                    TextColor="{StaticResource Primary}" />
             <ActivityIndicator x:Name="LoadingIndicator"
                                IsVisible="False"
                                IsRunning="False"

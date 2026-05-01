@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="docusystem.Pages.RevisionHistory.RevisionHistoryPage"
              BackgroundColor="{StaticResource White}"
-             Title="Revision history">
+             Title="Proposal history">
 
     <ScrollView>
         <VerticalStackLayout Spacing="0">
@@ -11,9 +11,9 @@
             <!-- Navy Page Header -->
             <Grid BackgroundColor="#003087" Padding="18,16,18,22">
                 <VerticalStackLayout Spacing="4">
-                    <Label Text="Revision history"
+                    <Label Text="Proposal history"
                            FontSize="20" FontAttributes="Bold" TextColor="White" />
-                    <Label Text="Edits and returns for the selected proposal."
+                    <Label Text="View-only action trail for approvals, returns, resubmissions, and status changes."
                            FontSize="12" TextColor="White" Opacity="0.9" LineBreakMode="WordWrap" />
                     <Label x:Name="RevisionContextHintLabel"
                            Text=""
@@ -34,7 +34,7 @@
                         StrokeShape="RoundRectangle 12"
                         Padding="12,10">
                     <VerticalStackLayout Spacing="4">
-                        <Label Text="Latest changes (summary)"
+                        <Label Text="Latest actions (summary)"
                                FontSize="13" FontAttributes="Bold"
                                TextColor="{StaticResource Primary}" />
                         <Label x:Name="RevisionLatestSummaryLabel"
@@ -47,7 +47,7 @@
 
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="10">
-                        <Label Text="Full change log" Style="{StaticResource SectionTitle}" />
+                        <Label Text="Full action timeline" Style="{StaticResource SectionTitle}" />
                         <ActivityIndicator x:Name="RevisionLoadingIndicator"
                                            IsVisible="False"
                                            IsRunning="False"

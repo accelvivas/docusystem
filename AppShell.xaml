@@ -68,10 +68,10 @@
         ContentTemplate="{DataTemplate approvals:PendingApprovalsPage}"
         Route="pendingapprovals" />
 
-    <!-- Revision History -->
+    <!-- Proposal action history (view-only for approvers) -->
     <ShellContent
         x:Name="RevisionHistoryShellContent"
-        Title="Revision History"
+        Title="Proposal History"
         ContentTemplate="{DataTemplate revisions:RevisionHistoryPage}"
         Route="revisionhistory" />
 

@@ -222,6 +222,18 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <Button x:Name="OpenProposalHistoryBtn"
+                        Text="View Proposal History"
+                        BackgroundColor="White"
+                        TextColor="{StaticResource Primary}"
+                        BorderColor="{StaticResource Primary}"
+                        BorderWidth="1.5"
+                        FontAttributes="Bold"
+                        FontSize="13"
+                        CornerRadius="12"
+                        Padding="14,12"
+                        Clicked="OnOpenProposalHistoryClicked" />
+
                 <!-- Submit Field Review button (approver only) -->
                 <Button x:Name="SubmitFieldReviewBtn"
                         Text="Submit Field Review"

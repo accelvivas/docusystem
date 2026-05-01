@@ -5,7 +5,7 @@ using docusystem.Services;
 using Ui = docusystem.UiBrand;
 
 /// <summary>
-/// Revision timeline — data from <see cref="IRevisionService.GetRevisionHistoryAsync"/> (TODO: Laravel).
+/// View-only proposal action history for approvers/signatories.
 /// </summary>
 public partial class RevisionHistoryPage : ContentPage
 {
@@ -45,7 +45,7 @@ public partial class RevisionHistoryPage : ContentPage
 		{
 			LatestRevisionSummaryBorder.IsVisible = false;
 			RevisionContextHintLabel.Text =
-				"Open a proposal from Pending Approvals, then open revision history from its details.";
+				"Open a proposal from Pending Approvals, then view its history.";
 			RevisionTimelineStack.Children.Clear();
 			RevisionTimelineStack.Children.Add(CreateEmptyLabel(
 				"No proposal selected.\n\nChoose one from Pending Approvals first."));
@@ -65,15 +65,15 @@ public partial class RevisionHistoryPage : ContentPage
 
 		if (revisions.Count == 0)
 		{
-			RevisionLatestSummaryLabel.Text = "No edits logged yet.";
+			RevisionLatestSummaryLabel.Text = "No history available yet.";
 			RevisionTimelineStack.Children.Add(CreateEmptyLabel(
-				"No revisions recorded yet."));
+				"No history available yet."));
 			return;
 		}
 
 		RevisionLatestSummaryLabel.Text = string.Join('\n',
 			revisions.Take(3).Select(r =>
-				$"• {(string.IsNullOrWhiteSpace(r.FieldChanged) ? "Record" : r.FieldChanged)} — {r.Timestamp:MMM dd} ({r.EditedBy})"));
+				$"• {r.DisplayTitle} — {r.Timestamp:MMM dd} ({r.DisplayActor})"));
 
 		foreach (var revision in revisions)
 		{
@@ -96,60 +96,84 @@ public partial class RevisionHistoryPage : ContentPage
 
 	private Border CreateRevisionCard(RevisionLog revision)
 	{
-		var actorRow = new Grid
+		var header = new Grid
 		{
 			ColumnDefinitions =
 			{
+				new ColumnDefinition { Width = GridLength.Auto },
 				new ColumnDefinition { Width = GridLength.Star },
 				new ColumnDefinition { Width = GridLength.Auto }
 			},
+			ColumnSpacing = 10,
 			Children =
 			{
+				new Border
+				{
+					BackgroundColor = Ui.NavyWash,
+					Stroke = Colors.Transparent,
+					StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
+					Padding = new Thickness(8, 4),
+					VerticalOptions = LayoutOptions.Start,
+					Content = new Label
+					{
+						Text = revision.ActionIcon,
+						FontSize = 14,
+						TextColor = Ui.Navy
+					}
+				},
 				new VerticalStackLayout
 				{
-					Spacing = 2,
+					Spacing = 3,
 					Children =
 					{
 						new Label
 						{
-							Text = revision.EditedBy,
-							FontSize = 13,
+							Text = revision.DisplayTitle,
+							FontSize = 14,
 							FontAttributes = FontAttributes.Bold,
 							TextColor = Ui.Navy
 						},
 						new Label
 						{
-							Text = revision.Role,
+							Text = $"Activity Proposal: {revision.DisplayProposalTitle}",
+							FontSize = 11,
+							TextColor = Ui.Navy
+						},
+						new Label
+						{
+							Text = $"Organization: {revision.DisplayOrganizationName}",
 							FontSize = 11,
 							TextColor = Ui.NavyMutedText
 						}
 					}
-				},
+				}.Assign(gridColumn: 1),
 				new Label
 				{
 					Text = FormatDateTime(revision.Timestamp),
 					FontSize = 10,
 					TextColor = Ui.NavyMutedText,
 					VerticalOptions = LayoutOptions.Start
-				}.Assign(gridColumn: 1)
+				}.Assign(gridColumn: 2)
 			}
 		};
 
-		var fieldBadge = new Border
+		var actorStatusLine = new Label
 		{
-			BackgroundColor = Ui.NavyWash,
-			Stroke = Colors.Transparent,
-			StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 6 },
-			StrokeThickness = 0,
-			Padding = new Thickness(8, 3),
-			HorizontalOptions = LayoutOptions.Start,
-			Content = new Label
-			{
-				Text = revision.FieldChanged,
-				FontSize = 11,
-				FontAttributes = FontAttributes.Bold,
-				TextColor = Ui.Navy
-			}
+			Text = BuildActorStatusText(revision),
+			FontSize = 11,
+			TextColor = Ui.NavyMutedText,
+			LineBreakMode = LineBreakMode.WordWrap
+		};
+
+		var affectedFieldsLabel = new Label
+		{
+			Text = string.IsNullOrWhiteSpace(revision.DisplayAffectedFields)
+				? string.Empty
+				: $"Affected fields: {revision.DisplayAffectedFields}",
+			FontSize = 11,
+			TextColor = Ui.NavyMutedText,
+			LineBreakMode = LineBreakMode.WordWrap,
+			IsVisible = !string.IsNullOrWhiteSpace(revision.DisplayAffectedFields)
 		};
 
 		var notePanel = new Border
@@ -166,20 +190,21 @@ public partial class RevisionHistoryPage : ContentPage
 				{
 					new Label
 					{
-						Text = "REVISION NOTE",
+						Text = "REMARK / NOTE",
 						FontSize = 9,
 						TextColor = Ui.Navy,
 						FontAttributes = FontAttributes.Bold
 					},
 					new Label
 					{
-						Text = string.IsNullOrWhiteSpace(revision.NewValue) ? "(no note provided)" : revision.NewValue,
+						Text = string.IsNullOrWhiteSpace(revision.DisplayRemark) ? "(no note provided)" : revision.DisplayRemark,
 						FontSize = 12,
 						TextColor = Ui.Navy,
 						LineBreakMode = LineBreakMode.WordWrap
 					}
 				}
-			}
+			},
+			IsVisible = !string.IsNullOrWhiteSpace(revision.DisplayRemark)
 		};
 
 		return new Border
@@ -194,14 +219,15 @@ public partial class RevisionHistoryPage : ContentPage
 				Spacing = 10,
 				Children =
 				{
-					actorRow,
+					header,
 					new BoxView
 					{
 						Color = Ui.NavyLine,
 						Opacity = 0.45,
 						HeightRequest = 1
 					},
-					fieldBadge,
+					actorStatusLine,
+					affectedFieldsLabel,
 					notePanel
 				}
 			}
@@ -239,6 +265,25 @@ public partial class RevisionHistoryPage : ContentPage
 		}
 
 		return dateTime.ToString("MMM dd, yyyy");
+	}
+
+	private static string BuildActorStatusText(RevisionLog revision)
+	{
+		var parts = new List<string>();
+		if (!string.IsNullOrWhiteSpace(revision.DisplayActor))
+		{
+			parts.Add($"By: {revision.DisplayActor}");
+		}
+		if (!string.IsNullOrWhiteSpace(revision.DisplayActorRole))
+		{
+			parts.Add($"Role/Stage: {revision.DisplayActorRole}");
+		}
+		if (!string.IsNullOrWhiteSpace(revision.DisplayStatusAfterAction))
+		{
+			parts.Add($"Status after action: {revision.DisplayStatusAfterAction}");
+		}
+
+		return parts.Count == 0 ? "History entry recorded." : string.Join(" • ", parts);
 	}
 }
 

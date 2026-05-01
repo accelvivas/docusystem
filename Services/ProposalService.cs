@@ -101,7 +101,9 @@ public sealed class ProposalService : IProposalService
 				"api/proposals"
 			};
 
-			IReadOnlyList<Proposal> bestParsed = [];
+			var merged = new List<Proposal>();
+			var seenIds = new HashSet<int>();
+			List<Proposal>? broadFallbackParsed = null;
 			for (var i = 0; i < candidatePaths.Length; i++)
 			{
 				using var response = await client.GetAsync(candidatePaths[i], cancellationToken).ConfigureAwait(false);
@@ -135,19 +137,35 @@ public sealed class ProposalService : IProposalService
 					var owned = parsed
 						.Where(p => IsOwnedByCurrentUser(p, _session.CurrentUser))
 						.ToList();
-					if (owned.Count > 0)
-					{
-						return owned;
-					}
-
-					bestParsed = parsed;
+					broadFallbackParsed = parsed.ToList();
+					AddDistinct(merged, seenIds, owned);
 					continue;
 				}
 
-				return parsed;
+				// Keep collecting from dedicated routes instead of returning early.
+				// Some backends split by status and one endpoint may omit approved/archived records.
+				AddDistinct(merged, seenIds, parsed);
 			}
 
-			return bestParsed;
+			if (merged.Count > 0)
+			{
+				return merged
+					.OrderByDescending(p => p.SubmittedDate)
+					.ToList();
+			}
+
+			// Last fallback for RSO tracking lane: many backends already scope `api/proposals`
+			// to the authenticated user. If our ownership heuristics are too strict and
+			// filtered everything out, return that scoped list so the user still sees
+			// their submissions.
+			if (IsRsoTrackingRole(_session.CurrentUser) && broadFallbackParsed is { Count: > 0 })
+			{
+				return broadFallbackParsed
+					.OrderByDescending(p => p.SubmittedDate)
+					.ToList();
+			}
+
+			return [];
 		}
 		catch (HttpRequestException)
 		{
@@ -388,6 +406,21 @@ public sealed class ProposalService : IProposalService
 			return false;
 		}
 
+		var ext = proposal.ExtraData;
+		if (user.Id > 0)
+		{
+			var submittedById =
+				ReadIntFromExtra(ext, "submitted_by_id", "submitter_id", "created_by_id", "user_id") ??
+				ReadNestedIntFromExtra(ext, "submitted_by", "id") ??
+				ReadNestedIntFromExtra(ext, "submitter", "id") ??
+				ReadNestedIntFromExtra(ext, "user", "id");
+
+			if (submittedById.HasValue && submittedById.Value == user.Id)
+			{
+				return true;
+			}
+		}
+
 		// RSO President scope: organization match is the strongest signal.
 		if (!string.IsNullOrWhiteSpace(user.OrganizationName) &&
 			!string.IsNullOrWhiteSpace(proposal.OrganizationName) &&
@@ -434,6 +467,104 @@ public sealed class ProposalService : IProposalService
 		}
 
 		return false;
+	}
+
+	private static void AddDistinct(List<Proposal> target, HashSet<int> seenIds, IEnumerable<Proposal> source)
+	{
+		foreach (var p in source)
+		{
+			if (p is null)
+			{
+				continue;
+			}
+
+			if (p.Id > 0)
+			{
+				if (!seenIds.Add(p.Id))
+				{
+					continue;
+				}
+
+				target.Add(p);
+				continue;
+			}
+
+			// No id from API: keep only one per title+org snapshot
+			var exists = target.Any(x =>
+				x.Id == 0 &&
+				string.Equals(x.Title, p.Title, StringComparison.OrdinalIgnoreCase) &&
+				string.Equals(x.OrganizationName, p.OrganizationName, StringComparison.OrdinalIgnoreCase));
+			if (!exists)
+			{
+				target.Add(p);
+			}
+		}
+	}
+
+	private static bool IsRsoTrackingRole(User? user)
+	{
+		if (user is null)
+		{
+			return false;
+		}
+
+		return string.Equals(user.Role, "RSO President", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.Role, "Organization Officer", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "rso_president", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "org_officer", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static int? ReadIntFromExtra(Dictionary<string, JsonElement>? ext, params string[] keys)
+	{
+		if (ext is null)
+		{
+			return null;
+		}
+
+		for (var i = 0; i < keys.Length; i++)
+		{
+			if (!ext.TryGetValue(keys[i], out var el))
+			{
+				continue;
+			}
+
+			if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n))
+			{
+				return n;
+			}
+
+			if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var parsed))
+			{
+				return parsed;
+			}
+		}
+
+		return null;
+	}
+
+	private static int? ReadNestedIntFromExtra(Dictionary<string, JsonElement>? ext, string parent, string child)
+	{
+		if (ext is null || !ext.TryGetValue(parent, out var obj) || obj.ValueKind != JsonValueKind.Object)
+		{
+			return null;
+		}
+
+		if (!obj.TryGetProperty(child, out var value))
+		{
+			return null;
+		}
+
+		if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var n))
+		{
+			return n;
+		}
+
+		if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out var parsed))
+		{
+			return parsed;
+		}
+
+		return null;
 	}
 
 	private bool IsSupabaseBackend() =>
@@ -584,7 +715,61 @@ public sealed class ProposalService : IProposalService
 			}
 		}
 
+		// Fallback: recursively search common wrappers until we find an array payload.
+		if (TryFindProposalArray(root, out var discovered))
+		{
+			var list = discovered.Deserialize<List<Proposal>>(JsonOptions) ?? [];
+			DecorateProposals(list);
+			return list;
+		}
+
 		return [];
+	}
+
+	private static bool TryFindProposalArray(JsonElement node, out JsonElement found)
+	{
+		if (node.ValueKind == JsonValueKind.Array)
+		{
+			found = node;
+			return true;
+		}
+
+		if (node.ValueKind != JsonValueKind.Object)
+		{
+			found = default;
+			return false;
+		}
+
+		ReadOnlySpan<string> preferredKeys = ["data", "items", "rows", "results", "payload", "proposals", "list"];
+		for (var i = 0; i < preferredKeys.Length; i++)
+		{
+			if (!node.TryGetProperty(preferredKeys[i], out var child))
+			{
+				continue;
+			}
+
+			if (child.ValueKind == JsonValueKind.Array)
+			{
+				found = child;
+				return true;
+			}
+
+			if (child.ValueKind == JsonValueKind.Object && TryFindProposalArray(child, out found))
+			{
+				return true;
+			}
+		}
+
+		foreach (var prop in node.EnumerateObject())
+		{
+			if (prop.Value.ValueKind == JsonValueKind.Object && TryFindProposalArray(prop.Value, out found))
+			{
+				return true;
+			}
+		}
+
+		found = default;
+		return false;
 	}
 
 	private static Proposal? ParseSingleProposal(string json)

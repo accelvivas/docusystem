@@ -11,13 +11,19 @@ public partial class AppShell : Shell
 	private readonly AppSessionService _session;
 	private readonly SessionPersistenceService _persistence;
 	private readonly IAuthService _authService;
+	private readonly INotificationService _notificationService;
 	private bool _sessionRestoreStarted;
 
-	public AppShell(AppSessionService session, SessionPersistenceService persistence, IAuthService authService)
+	public AppShell(
+		AppSessionService session,
+		SessionPersistenceService persistence,
+		IAuthService authService,
+		INotificationService notificationService)
 	{
 		_session = session;
 		_persistence = persistence;
 		_authService = authService;
+		_notificationService = notificationService;
 		InitializeComponent();
 		// Contextual workflow pages (not flyout items): opened from Pending Approvals / Proposal Details.
 		Routing.RegisterRoute("proposaldetails", typeof(ProposalDetailsPage));
@@ -32,7 +38,7 @@ public partial class AppShell : Shell
 		MainThread.BeginInvokeOnMainThread(SyncNotificationsToolbarItem);
 	}
 
-	private void SyncNotificationsToolbarItem()
+	private async void SyncNotificationsToolbarItem()
 	{
 		if (Current?.CurrentPage is not ContentPage page)
 		{
@@ -66,6 +72,16 @@ public partial class AppShell : Shell
 		};
 		item.Clicked += OnNotificationsToolbarClicked;
 		page.ToolbarItems.Add(item);
+
+		try
+		{
+			var unread = await _notificationService.GetUnreadCountAsync().ConfigureAwait(true);
+			item.Text = unread > 0 ? unread.ToString() : string.Empty;
+		}
+		catch
+		{
+			item.Text = string.Empty;
+		}
 	}
 
 	private static void RemoveNotificationsToolbarItems(ContentPage page)

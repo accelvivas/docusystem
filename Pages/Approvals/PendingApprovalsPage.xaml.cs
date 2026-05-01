@@ -13,6 +13,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 	private readonly IProposalService _proposalService;
 	private List<Proposal> _allProposals = [];
 	private string? _pendingQueryFilter;
+	private bool _isTrackingOnlyMode;
 
 	public PendingApprovalsPage(AppSessionService session, IProposalService proposalService)
 	{
@@ -45,7 +46,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		base.OnAppearing();
 		try
 		{
-			ApplyApproverHeaderCopy();
+			ApplyRoleHeaderCopy();
 			SetLoadingState(true);
 			InitializeFilterDefaults();
 			await LoadProposalsAsync();
@@ -84,7 +85,10 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 			return;
 		}
 
-		var proposals = (await _proposalService.GetPendingApprovalsAsync()).ToList();
+		_isTrackingOnlyMode = IsRsoPresident(currentUser);
+		var proposals = _isTrackingOnlyMode
+			? (await _proposalService.GetMySubmissionsAsync()).ToList()
+			: (await _proposalService.GetPendingApprovalsAsync()).ToList();
 
 		_allProposals = proposals
 			.OrderByDescending(p => string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase))
@@ -92,11 +96,15 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 			.ToList();
 	}
 
-	private void ApplyApproverHeaderCopy()
+	private void ApplyRoleHeaderCopy()
 	{
-		Title = "Pending Approvals";
-		PendingPageTitleLabel.Text = "My Pending Approvals";
-		PendingPageSubtitleLabel.Text = "Only documents currently routed to your role are shown.";
+		var user = _session.CurrentUser;
+		_isTrackingOnlyMode = IsRsoPresident(user);
+		Title = _isTrackingOnlyMode ? "My Proposals" : "Pending Approvals";
+		PendingPageTitleLabel.Text = _isTrackingOnlyMode ? "My Submitted Proposals" : "My Pending Approvals";
+		PendingPageSubtitleLabel.Text = _isTrackingOnlyMode
+			? "Tracking only: your own proposals and their current routing stage."
+			: "Only documents currently routed to your role are shown.";
 	}
 
 	private void InitializeFilterDefaults()
@@ -144,7 +152,9 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 
 		if (proposalsToDisplay.Count == 0)
 		{
-			var emptyMsg = "Nothing to review right now.\n\nPull down to refresh.";
+			var emptyMsg = _isTrackingOnlyMode
+				? "No submitted proposals to track right now.\n\nPull down to refresh."
+				: "Nothing to review right now.\n\nPull down to refresh.";
 			ProposalsStack.Children.Add(
 				new Label
 				{
@@ -226,7 +236,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 							}.Assign(gridColumn: 0),
 							new Button
 							{
-								Text = "View / Review",
+								Text = _isTrackingOnlyMode ? "View Status" : "View / Review",
 								FontSize = 12,
 								FontAttributes = FontAttributes.Bold,
 								TextColor = Ui.Navy,
@@ -373,6 +383,19 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 			                         string.Equals(s, "Rejected", StringComparison.OrdinalIgnoreCase),
 			_ => true
 		};
+	}
+
+	private static bool IsRsoPresident(User? user)
+	{
+		if (user is null)
+		{
+			return false;
+		}
+
+		return string.Equals(user.Role, "RSO President", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.Role, "Organization Officer", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "rso_president", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "org_officer", StringComparison.OrdinalIgnoreCase);
 	}
 
 	/// <summary>Loads the latest proposal snapshot, stores it in session, and opens contextual details page.</summary>

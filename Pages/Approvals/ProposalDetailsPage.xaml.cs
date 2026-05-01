@@ -20,6 +20,10 @@ public partial class ProposalDetailsPage : ContentPage
 	private List<ApprovalStep> _steps = [];
 	private List<ProposalFieldReview> _fields = [];
 	private List<ProposalAttachment> _attachments = [];
+	private List<RevisionLog> _historyEntries = [];
+	private CancellationTokenSource? _fieldReviewAutoSaveCts;
+	private bool _fieldReviewAutoSaveInFlight;
+	private bool _showFieldReviewControls;
 
 	// Workflow stage selected in the horizontal track
 	private int _selectedStepIndex;
@@ -87,6 +91,9 @@ public partial class ProposalDetailsPage : ContentPage
 		_steps = _approvalService.BuildApprovalSteps(_proposal).ToList();
 		_attachments = await LoadAttachmentsForReviewAsync(_proposal.Id);
 		_fields = BuildFieldList(_proposal, _attachments);
+		_historyEntries = (await _revisionService.GetRevisionHistoryAsync(_proposal.Id).ConfigureAwait(true))
+			.OrderByDescending(h => h.Timestamp)
+			.ToList();
 		// Default: select the current signatory step (or -1 = Submitted node when no steps yet).
 		_selectedStepIndex = FindCurrentStepIndex();
 
@@ -245,6 +252,7 @@ public partial class ProposalDetailsPage : ContentPage
 
 		ApprovalRules.ApplyWorkflowPermissions(_proposal, user);
 		var canApprove = !isFullyApproved && ApprovalRules.CanApprove(user, _proposal);
+		_showFieldReviewControls = canApprove;
 		SubmitFieldReviewBtn.IsVisible = canApprove;
 		UpdateSubmitButtonState();
 	}
@@ -966,12 +974,17 @@ public partial class ProposalDetailsPage : ContentPage
 		// --- Top row: label+value | Passed | Revision buttons ---
 		var topRow = new Grid
 		{
-			ColumnDefinitions =
-			{
-				new ColumnDefinition(GridLength.Star),
-				new ColumnDefinition(GridLength.Auto),
-				new ColumnDefinition(GridLength.Auto)
-			},
+			ColumnDefinitions = _showFieldReviewControls
+				? new ColumnDefinitionCollection
+				{
+					new ColumnDefinition(GridLength.Star),
+					new ColumnDefinition(GridLength.Auto),
+					new ColumnDefinition(GridLength.Auto)
+				}
+				: new ColumnDefinitionCollection
+				{
+					new ColumnDefinition(GridLength.Star)
+				},
 			ColumnSpacing = 8
 		};
 
@@ -1082,21 +1095,27 @@ public partial class ProposalDetailsPage : ContentPage
 
 		Grid.SetColumn(labelStack, 0);
 
-		// Passed button
-		var passedBtn = CreateReviewButton("Passed", index, isPassed: true, field.State == FieldReviewState.Passed);
-		Grid.SetColumn(passedBtn, 1);
-
-		// Revision button
-		var revisionBtn = CreateReviewButton("Revision", index, isPassed: false, field.State == FieldReviewState.Revision);
-		Grid.SetColumn(revisionBtn, 2);
-
 		topRow.Children.Add(labelStack);
-		topRow.Children.Add(passedBtn);
-		topRow.Children.Add(revisionBtn);
+		if (_showFieldReviewControls)
+		{
+			// Passed button
+			var passedBtn = CreateReviewButton("Passed", index, isPassed: true, field.State == FieldReviewState.Passed);
+			Grid.SetColumn(passedBtn, 1);
+			topRow.Children.Add(passedBtn);
+
+			// Revision button
+			var revisionBtn = CreateReviewButton("Revision", index, isPassed: false, field.State == FieldReviewState.Revision);
+			Grid.SetColumn(revisionBtn, 2);
+			topRow.Children.Add(revisionBtn);
+		}
 		cardContent.Children.Add(topRow);
 
 		// --- Revision note input (visible only when Revision selected) ---
-		var revisionNoteSection = new VerticalStackLayout { Spacing = 4, IsVisible = field.RevisionInputVisible };
+		var revisionNoteSection = new VerticalStackLayout
+		{
+			Spacing = 4,
+			IsVisible = _showFieldReviewControls && field.RevisionInputVisible
+		};
 
 		var noteEntry = new Editor
 		{
@@ -1112,6 +1131,7 @@ public partial class ProposalDetailsPage : ContentPage
 			_fields[index].RevisionNote = e.NewTextValue ?? string.Empty;
 			UpdateReviewSummary();
 			UpdateSubmitButtonState();
+			QueueFieldReviewAutoSave();
 		};
 
 		var hintLabel = new Label
@@ -1206,6 +1226,7 @@ public partial class ProposalDetailsPage : ContentPage
 		UpdateStepBadges();
 		RefreshComputedStatusBadge();
 		UpdateSubmitButtonState();
+		QueueFieldReviewAutoSave();
 	}
 
 	private void UpdateSubmitButtonState()
@@ -1527,11 +1548,78 @@ public partial class ProposalDetailsPage : ContentPage
 	{
 		WorkflowLogsStack.Children.Clear();
 
+		var localDecisions = _fields
+			.Where(f => f.State != FieldReviewState.Pending)
+			.Take(8)
+			.Select(f =>
+			{
+				var action = f.State == FieldReviewState.Passed ? "PASSED" : "REVISION";
+				var note = f.State == FieldReviewState.Revision
+					? (string.IsNullOrWhiteSpace(f.RevisionNote) ? " (note pending)" : $" · {f.RevisionNote.Trim()}")
+					: string.Empty;
+				return $"FIELD REVIEW: {action} · {f.Label}{note}";
+			})
+			.ToList();
+
+		if (localDecisions.Count > 0)
+		{
+			foreach (var local in localDecisions)
+			{
+				WorkflowLogsStack.Children.Add(new Label
+				{
+					Text = local,
+					FontSize = 11,
+					TextColor = Color.FromArgb("#5A6A8A"),
+					LineBreakMode = LineBreakMode.WordWrap
+				});
+			}
+		}
+
 		var logs = _steps
 			.Where(s => s.Status == "Completed" || s.ActedAt.HasValue)
 			.OrderByDescending(s => s.ActedAt)
 			.Take(5)
 			.ToList();
+
+		var historyLogs = _historyEntries
+			.Where(h => h.Timestamp != default)
+			.OrderByDescending(h => h.Timestamp)
+			.Take(8)
+			.ToList();
+
+		if (historyLogs.Count > 0)
+		{
+			foreach (var entry in historyLogs)
+			{
+				var line = $"{entry.DisplayTitle.ToUpperInvariant()}: {entry.DisplayActor}";
+				if (!string.IsNullOrWhiteSpace(entry.DisplayActorRole))
+				{
+					line += $" · {entry.DisplayActorRole}";
+				}
+				if (!string.IsNullOrWhiteSpace(entry.DisplayStatusAfterAction))
+				{
+					line += $" · {entry.DisplayStatusAfterAction}";
+				}
+				if (!string.IsNullOrWhiteSpace(entry.DisplayRemark))
+				{
+					line += $" · {entry.DisplayRemark}";
+				}
+				line += $" · {entry.Timestamp:MMM dd, yyyy}";
+
+				WorkflowLogsStack.Children.Add(new Label
+				{
+					Text = line,
+					FontSize = 11,
+					TextColor = Color.FromArgb("#5A6A8A"),
+					LineBreakMode = LineBreakMode.WordWrap
+				});
+			}
+
+			if (localDecisions.Count == 0)
+			{
+				return;
+			}
+		}
 
 		if (logs.Count == 0 && _proposal is not null)
 		{
@@ -1559,6 +1647,132 @@ public partial class ProposalDetailsPage : ContentPage
 			};
 			WorkflowLogsStack.Children.Add(logLabel);
 		}
+	}
+
+	private void QueueFieldReviewAutoSave()
+	{
+		if (_proposal is null)
+		{
+			return;
+		}
+
+		_fieldReviewAutoSaveCts?.Cancel();
+		_fieldReviewAutoSaveCts = new CancellationTokenSource();
+		var token = _fieldReviewAutoSaveCts.Token;
+
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				await Task.Delay(450, token).ConfigureAwait(false);
+				if (token.IsCancellationRequested)
+				{
+					return;
+				}
+
+				await MainThread.InvokeOnMainThreadAsync(async () =>
+				{
+					await AutoSaveFieldReviewDraftAsync().ConfigureAwait(true);
+				});
+			}
+			catch (TaskCanceledException)
+			{
+			}
+		}, token);
+	}
+
+	private async Task AutoSaveFieldReviewDraftAsync()
+	{
+		if (_proposal is null || _fieldReviewAutoSaveInFlight)
+		{
+			return;
+		}
+
+		var savableChanges = BuildFieldChanges(includeIncompleteRevisionNotes: false);
+		if (savableChanges.Count == 0)
+		{
+			return;
+		}
+
+		_fieldReviewAutoSaveInFlight = true;
+		try
+		{
+			var result = await _revisionService.SubmitFieldChangesAsync(_proposal.Id, savableChanges).ConfigureAwait(true);
+			if (!result.Success)
+			{
+				return;
+			}
+
+			await RefreshHistoryEntriesAsync().ConfigureAwait(true);
+			BuildWorkflowLogs();
+		}
+		finally
+		{
+			_fieldReviewAutoSaveInFlight = false;
+		}
+	}
+
+	private List<FieldChange> BuildFieldChanges(bool includeIncompleteRevisionNotes)
+	{
+		var changes = new List<FieldChange>();
+		for (var i = 0; i < _fields.Count; i++)
+		{
+			var field = _fields[i];
+			if (field.State == FieldReviewState.Pending)
+			{
+				continue;
+			}
+
+			var status = field.State == FieldReviewState.Passed ? "passed" : "revision";
+			var note = (field.RevisionNote ?? string.Empty).Trim();
+
+			if (status == "revision" && string.IsNullOrWhiteSpace(note) && !includeIncompleteRevisionNotes)
+			{
+				continue;
+			}
+
+			changes.Add(new FieldChange
+			{
+				FieldKey = ToFieldKey(field.Label),
+				FieldLabel = field.Label,
+				Status = status,
+				Comment = string.IsNullOrWhiteSpace(note) ? null : note
+			});
+		}
+
+		return changes;
+	}
+
+	private static string ToFieldKey(string label)
+	{
+		if (string.IsNullOrWhiteSpace(label))
+		{
+			return "field";
+		}
+
+		var chars = label
+			.Trim()
+			.ToLowerInvariant()
+			.Select(c => char.IsLetterOrDigit(c) ? c : '_')
+			.ToArray();
+		var key = new string(chars);
+		while (key.Contains("__", StringComparison.Ordinal))
+		{
+			key = key.Replace("__", "_", StringComparison.Ordinal);
+		}
+		return key.Trim('_');
+	}
+
+	private async Task RefreshHistoryEntriesAsync()
+	{
+		if (_proposal is null)
+		{
+			return;
+		}
+
+		_historyEntries = (await _revisionService.GetRevisionHistoryAsync(_proposal.Id).ConfigureAwait(true))
+			.OrderByDescending(h => h.Timestamp)
+			.ToList();
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
@@ -1600,6 +1814,17 @@ public partial class ProposalDetailsPage : ContentPage
 		}
 
 		var anyRevision = _fields.Any(f => f.State == FieldReviewState.Revision);
+		var saveResult = await _revisionService.SubmitFieldChangesAsync(
+			_proposal.Id,
+			BuildFieldChanges(includeIncompleteRevisionNotes: true)).ConfigureAwait(true);
+		if (!saveResult.Success)
+		{
+			await DisplayAlertAsync("Could not save field review", saveResult.Message ?? "Please try again.", "OK");
+			UpdateSubmitButtonState();
+			return;
+		}
+		await RefreshHistoryEntriesAsync().ConfigureAwait(true);
+		BuildWorkflowLogs();
 
 		if (anyRevision)
 		{
@@ -1669,6 +1894,16 @@ public partial class ProposalDetailsPage : ContentPage
 
 		await DisplayAlertAsync("Resubmitted", $"The proposal is back at {returningStage}.", "OK");
 		await Shell.Current.GoToAsync("//pendingapprovals");
+	}
+
+	private async void OnOpenProposalHistoryClicked(object? sender, EventArgs e)
+	{
+		if (_proposal is not null)
+		{
+			_session.SetSelectedProposal(_proposal);
+		}
+
+		await Shell.Current.GoToAsync("//revisionhistory");
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────

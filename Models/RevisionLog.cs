@@ -1,24 +1,54 @@
 using System.Text.Json.Serialization;
+using System.Linq;
 
 namespace docusystem.Models;
 
 /// <summary>
-/// Single row in the unified revision timeline returned by
-/// <c>ProposalRevisionController@index</c>. The controller merges three sources
-/// (field-level reviews, approval logs, and workflow steps in <c>revision_required</c>),
-/// so <see cref="Type"/> tells the UI which kind of row this is and
-/// <see cref="Comment"/> carries the human-readable note.
+/// Unified proposal action/revision history row used by the mobile approver app.
+/// Supports both legacy "revisions" payloads and the newer "history" payload shape.
 /// </summary>
 public class RevisionLog
 {
-	/// <summary>
-	/// Composite ID like <c>field_5</c>, <c>log_12</c>, or <c>step_7</c> — kept as
-	/// <see cref="string"/> so we can deserialize it as-is.
-	/// </summary>
 	[JsonPropertyName("id")]
 	public string Id { get; set; } = string.Empty;
 
-	/// <summary><c>field_revision</c>, <c>workflow_revision</c>, or <c>workflow_step_revision</c>.</summary>
+	[JsonPropertyName("action_type")]
+	public string? ActionType { get; set; }
+
+	[JsonPropertyName("proposal_id")]
+	public int ProposalId { get; set; }
+
+	[JsonPropertyName("proposal_title")]
+	public string? ProposalTitle { get; set; }
+
+	[JsonPropertyName("organization_name")]
+	public string? OrganizationName { get; set; }
+
+	[JsonPropertyName("actor_name")]
+	public string? ActorName { get; set; }
+
+	[JsonPropertyName("actor_role")]
+	public string? ActorRole { get; set; }
+
+	[JsonPropertyName("stage_name")]
+	public string? StageName { get; set; }
+
+	[JsonPropertyName("remark")]
+	public string? Remark { get; set; }
+
+	[JsonPropertyName("reviewer_comment")]
+	public string? ReviewerComment { get; set; }
+
+	[JsonPropertyName("affected_fields")]
+	public string[]? AffectedFields { get; set; }
+
+	[JsonPropertyName("current_status_after_action")]
+	public string? CurrentStatusAfterAction { get; set; }
+
+	[JsonPropertyName("status_after_action")]
+	public string? StatusAfterAction { get; set; }
+
+	// Legacy keys still returned by older /revisions endpoints.
 	[JsonPropertyName("type")]
 	public string Type { get; set; } = string.Empty;
 
@@ -42,19 +72,19 @@ public class RevisionLog
 	[JsonPropertyName("created_at")]
 	public DateTime Timestamp { get; set; }
 
+	[JsonPropertyName("acted_at")]
+	public DateTime? ActedAt { get; set; }
+
 	// ───────────────────────────────────────────────────────────────────────
-	// Backwards-compatible read helpers (UI bindings keep working)
+	// UI helpers
 	// ───────────────────────────────────────────────────────────────────────
 
-	/// <summary>UI label for "what was changed" — falls back to step/role name.</summary>
 	[JsonIgnore]
 	public string FieldChanged => string.IsNullOrWhiteSpace(FieldLabel) ? "Record" : FieldLabel;
 
-	/// <summary>Display name of who left the note; defaults to "—" when the API doesn't include it.</summary>
 	[JsonIgnore]
 	public string EditedBy => string.IsNullOrWhiteSpace(ReviewerName) ? "—" : ReviewerName!;
 
-	/// <summary>Friendly label for the row category (used in the legacy "role" UI slot).</summary>
 	[JsonIgnore]
 	public string Role => Type switch
 	{
@@ -64,11 +94,118 @@ public class RevisionLog
 		_ => string.IsNullOrWhiteSpace(Type) ? "Revision" : Type
 	};
 
-	/// <summary>API doesn't return a "before" snapshot in the new contract.</summary>
 	[JsonIgnore]
 	public string OldValue => string.Empty;
 
-	/// <summary>The reviewer's note — primary text the UI should render.</summary>
 	[JsonIgnore]
 	public string NewValue => Comment ?? string.Empty;
+
+	[JsonIgnore]
+	public string EffectiveActionType
+	{
+		get
+		{
+			if (!string.IsNullOrWhiteSpace(ActionType))
+			{
+				return ActionType!.Trim().ToLowerInvariant();
+			}
+
+			var status = (Status ?? string.Empty).Trim().ToLowerInvariant();
+			var type = (Type ?? string.Empty).Trim().ToLowerInvariant();
+			if (status is "submitted")
+			{
+				return "submitted";
+			}
+			if (status is "rejected")
+			{
+				return "rejected";
+			}
+			if (status is "approved" or "completed")
+			{
+				return "approved";
+			}
+			if (status is "revision_required" or "returned_for_revision")
+			{
+				return "returned_for_revision";
+			}
+			if (status is "pending_next_approval" or "forwarded")
+			{
+				return "stage_forwarded";
+			}
+			if (type is "field_revision")
+			{
+				return "remark_added";
+			}
+			if (type.Contains("workflow", StringComparison.Ordinal))
+			{
+				return "stage_forwarded";
+			}
+
+			return "status_updated";
+		}
+	}
+
+	[JsonIgnore]
+	public string DisplayTitle => EffectiveActionType switch
+	{
+		"submitted" => "Submitted",
+		"returned_for_revision" => "Returned for Revision",
+		"resubmitted" => "Resubmitted",
+		"approved" => "Approved",
+		"rejected" => "Rejected",
+		"stage_forwarded" => "Stage Forwarded",
+		"remark_added" => "Remark Added",
+		"status_updated" => "Status Updated",
+		_ => "Action Recorded"
+	};
+
+	[JsonIgnore]
+	public string DisplayActor => FirstNonEmpty(ActorName, ReviewerName, "—");
+
+	[JsonIgnore]
+	public string DisplayActorRole => FirstNonEmpty(ActorRole, StageName, Role, "—");
+
+	[JsonIgnore]
+	public string DisplayRemark => FirstNonEmpty(Remark, ReviewerComment, Comment, NewValue);
+
+	[JsonIgnore]
+	public string DisplayStatusAfterAction => FirstNonEmpty(CurrentStatusAfterAction, StatusAfterAction, Status);
+
+	[JsonIgnore]
+	public string DisplayProposalTitle => FirstNonEmpty(ProposalTitle, "Untitled proposal");
+
+	[JsonIgnore]
+	public string DisplayOrganizationName => FirstNonEmpty(OrganizationName, "Unknown organization");
+
+	[JsonIgnore]
+	public string DisplayAffectedFields => AffectedFields is { Length: > 0 }
+		? string.Join(", ", AffectedFields.Where(f => !string.IsNullOrWhiteSpace(f)).Select(f => f.Trim()))
+		: (string.IsNullOrWhiteSpace(FieldLabel) ? string.Empty : FieldLabel);
+
+	[JsonIgnore]
+	public string ActionIcon => EffectiveActionType switch
+	{
+		"submitted" => "⬆️",
+		"returned_for_revision" => "↩️",
+		"resubmitted" => "🔄",
+		"approved" => "✅",
+		"rejected" => "❌",
+		"stage_forwarded" => "➡️",
+		"remark_added" => "💬",
+		"status_updated" => "ℹ️",
+		_ => "🕘"
+	};
+
+	private static string FirstNonEmpty(params string?[] values)
+	{
+		for (var i = 0; i < values.Length; i++)
+		{
+			if (!string.IsNullOrWhiteSpace(values[i]))
+			{
+				return values[i]!.Trim();
+			}
+		}
+
+		return string.Empty;
+	}
 }

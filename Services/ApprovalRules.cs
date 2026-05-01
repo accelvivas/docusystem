@@ -52,9 +52,10 @@ public static class ApprovalRules
 			return;
 		}
 
+		var effectiveRoles = ResolveEffectiveApproverRoles(user);
 		var stages = ProposalWorkflowService.GetStages(proposal.ApprovalFlowType);
-		var isSignatoryForThisProposal = stages.Any(s =>
-			string.Equals(s, user.Role, StringComparison.OrdinalIgnoreCase));
+		var isSignatoryForThisProposal = stages.Any(stage =>
+			effectiveRoles.Any(role => ProposalWorkflowService.IsEquivalentRole(stage, role)));
 
 		if (!isSignatoryForThisProposal)
 		{
@@ -63,11 +64,41 @@ public static class ApprovalRules
 			return;
 		}
 
-		var atTheirStage = string.Equals(proposal.CurrentStage, user.Role, StringComparison.OrdinalIgnoreCase);
+		var atTheirStage = effectiveRoles.Any(role =>
+			ProposalWorkflowService.IsEquivalentRole(proposal.CurrentStage, role));
 		var canActAsReviewer = atTheirStage && IsActionableStatus(proposal.Status);
 
 		proposal.CanEdit = canActAsReviewer;
 		proposal.CanApprove = canActAsReviewer;
+	}
+
+	private static IReadOnlyList<string> ResolveEffectiveApproverRoles(User user)
+	{
+		var roles = new List<string>();
+		if (!string.IsNullOrWhiteSpace(user.Role))
+		{
+			roles.Add(user.Role);
+		}
+
+		// Final mobile scope: Admin account can handle both SDAO Assistant and
+		// SDAO Coordinator stages.
+		if (string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+		{
+			roles.Add("SDAO Assistant");
+			roles.Add("SDAO Coordinator");
+		}
+
+		// Backward compatibility with existing "SDAO Staff" role naming.
+		if (string.Equals(user.Role, "SDAO Staff", StringComparison.OrdinalIgnoreCase))
+		{
+			roles.Add("SDAO Assistant");
+			roles.Add("SDAO Coordinator");
+		}
+
+		return roles
+			.Where(r => !string.IsNullOrWhiteSpace(r))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
 	}
 
 	/// <summary>Uses flags set by the API or <see cref="ApplyWorkflowPermissions"/>.</summary>

@@ -8,7 +8,7 @@ namespace docusystem.Services;
 /// </summary>
 public interface IRevisionService
 {
-	/// <summary>GET /api/proposals/{proposalId}/revisions — unified revision timeline.</summary>
+	/// <summary>GET proposal action history (tries /history, /revision-history, then /revisions).</summary>
 	Task<IReadOnlyList<RevisionLog>> GetRevisionHistoryAsync(int proposalId, CancellationToken cancellationToken = default);
 
 	/// <summary>GET /api/proposals/{proposalId}/field-reviews — current per-field passed/revision states.</summary>

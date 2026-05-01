@@ -32,29 +32,9 @@
         </member>
         <member name="T:docusystem.Models.NotificationItem">
             <summary>
-            Aligns 1:1 with <c>NotificationController@index</c> (Laravel):
-            <c>{ id, title, message, type, link_url, read_at, created_at }</c>.
-            <see cref="P:docusystem.Models.NotificationItem.IsRead"/> is derived from <see cref="P:docusystem.Models.NotificationItem.ReadAt"/> so callers can keep
-            using the same boolean check the UI already relies on.
+            Notification DTO for approver-focused mobile updates.
+            Supports both old and new Laravel payload shapes.
             </summary>
-        </member>
-        <member name="P:docusystem.Models.NotificationItem.Message">
-            <summary>API maps <c>notifications.body</c> to <c>message</c>.</summary>
-        </member>
-        <member name="P:docusystem.Models.NotificationItem.LinkUrl">
-            <summary>Optional deep link the UI can open when the notification is tapped.</summary>
-        </member>
-        <member name="P:docusystem.Models.NotificationItem.ReadAt">
-            <summary>Server timestamp when the notification was marked as read; <c>null</c> means unread.</summary>
-        </member>
-        <member name="P:docusystem.Models.NotificationItem.IsRead">
-            <summary>True when <see cref="P:docusystem.Models.NotificationItem.ReadAt"/> has a value.</summary>
-        </member>
-        <member name="P:docusystem.Models.NotificationItem.ProposalId">
-            <summary>Reserved for future contract additions; not sent by the current controller.</summary>
-        </member>
-        <member name="P:docusystem.Models.NotificationItem.RecipientRole">
-            <summary>Reserved for future contract additions; not sent by the current controller.</summary>
         </member>
         <member name="T:docusystem.Models.Proposal">
             <summary>
@@ -152,42 +132,15 @@
         </member>
         <member name="T:docusystem.Models.RevisionLog">
             <summary>
-            Single row in the unified revision timeline returned by
-            <c>ProposalRevisionController@index</c>. The controller merges three sources
-            (field-level reviews, approval logs, and workflow steps in <c>revision_required</c>),
-            so <see cref="P:docusystem.Models.RevisionLog.Type"/> tells the UI which kind of row this is and
-            <see cref="P:docusystem.Models.RevisionLog.Comment"/> carries the human-readable note.
+            Unified proposal action/revision history row used by the mobile approver app.
+            Supports both legacy "revisions" payloads and the newer "history" payload shape.
             </summary>
-        </member>
-        <member name="P:docusystem.Models.RevisionLog.Id">
-            <summary>
-            Composite ID like <c>field_5</c>, <c>log_12</c>, or <c>step_7</c> — kept as
-            <see cref="T:System.String"/> so we can deserialize it as-is.
-            </summary>
-        </member>
-        <member name="P:docusystem.Models.RevisionLog.Type">
-            <summary><c>field_revision</c>, <c>workflow_revision</c>, or <c>workflow_step_revision</c>.</summary>
         </member>
         <member name="P:docusystem.Models.RevisionLog.FieldLabel">
             <summary>Display label for the field/step (e.g. <c>Title of Activity</c> or <c>Adviser</c>).</summary>
         </member>
         <member name="P:docusystem.Models.RevisionLog.Comment">
             <summary>The reviewer's revision note / step remarks.</summary>
-        </member>
-        <member name="P:docusystem.Models.RevisionLog.FieldChanged">
-            <summary>UI label for "what was changed" — falls back to step/role name.</summary>
-        </member>
-        <member name="P:docusystem.Models.RevisionLog.EditedBy">
-            <summary>Display name of who left the note; defaults to "—" when the API doesn't include it.</summary>
-        </member>
-        <member name="P:docusystem.Models.RevisionLog.Role">
-            <summary>Friendly label for the row category (used in the legacy "role" UI slot).</summary>
-        </member>
-        <member name="P:docusystem.Models.RevisionLog.OldValue">
-            <summary>API doesn't return a "before" snapshot in the new contract.</summary>
-        </member>
-        <member name="P:docusystem.Models.RevisionLog.NewValue">
-            <summary>The reviewer's note — primary text the UI should render.</summary>
         </member>
         <member name="T:docusystem.Models.RoleIdCatalog">
             <summary>
@@ -296,12 +249,12 @@
         </member>
         <member name="T:docusystem.Pages.Notifications.NotificationsPage">
             <summary>
-            Notifications list — data from <see cref="M:docusystem.Services.INotificationService.GetNotificationsAsync(System.Threading.CancellationToken)"/> (TODO: Laravel).
+            In-app notifications for the signed-in user (approvers receive items scoped by Laravel).
             </summary>
         </member>
         <member name="T:docusystem.Pages.RevisionHistory.RevisionHistoryPage">
             <summary>
-            Revision timeline — data from <see cref="M:docusystem.Services.IRevisionService.GetRevisionHistoryAsync(System.Int32,System.Threading.CancellationToken)"/> (TODO: Laravel).
+            View-only proposal action history for approvers/signatories.
             </summary>
         </member>
         <member name="T:docusystem.Serialization.ApiUserJson">
@@ -502,13 +455,16 @@
             </summary>
         </member>
         <member name="M:docusystem.Services.INotificationService.GetNotificationsAsync(System.Threading.CancellationToken)">
-            <summary>GET /api/notifications — server scopes to authenticated user.</summary>
+            <summary>GET notifications (tries <c>api/notifications</c> and common alternates). Laravel scopes to the authenticated user / approver.</summary>
         </member>
         <member name="M:docusystem.Services.INotificationService.MarkAsReadAsync(System.Int32,System.Threading.CancellationToken)">
             <summary>PATCH /api/notifications/{id}/read — marks a single notification as read.</summary>
         </member>
         <member name="M:docusystem.Services.INotificationService.MarkAllAsReadAsync(System.Threading.CancellationToken)">
             <summary>PATCH /api/notifications/read-all — marks every notification for the user as read.</summary>
+        </member>
+        <member name="M:docusystem.Services.INotificationService.GetUnreadCountAsync(System.Threading.CancellationToken)">
+            <summary>GET /api/notifications/unread-count (or fallback from list).</summary>
         </member>
         <member name="T:docusystem.Services.IProposalService">
             <summary>
@@ -546,7 +502,7 @@
             </summary>
         </member>
         <member name="M:docusystem.Services.IRevisionService.GetRevisionHistoryAsync(System.Int32,System.Threading.CancellationToken)">
-            <summary>GET /api/proposals/{proposalId}/revisions — unified revision timeline.</summary>
+            <summary>GET proposal action history (tries /history, /revision-history, then /revisions).</summary>
         </member>
         <member name="M:docusystem.Services.IRevisionService.GetFieldReviewsAsync(System.Int32,System.Threading.CancellationToken)">
             <summary>GET /api/proposals/{proposalId}/field-reviews — current per-field passed/revision states.</summary>
@@ -599,7 +555,7 @@
             <summary><c>Supabase</c> = <c>Client.Auth</c>; <c>Laravel</c> = <c>POST /api/login</c>.</summary>
         </member>
         <member name="T:docusystem.Services.NotificationService">
-            <summary>Notifications from the Laravel API.</summary>
+            <summary>Notifications from the Laravel API (scoped server-side to the signed-in user / approver).</summary>
         </member>
         <member name="T:docusystem.Services.ProposalService">
             <summary>
@@ -624,6 +580,11 @@
         <member name="F:docusystem.Services.ProposalWorkflowService.AllSignatoryRoles">
             <summary>Every role name that can appear as a signatory in either flow.</summary>
         </member>
+        <member name="M:docusystem.Services.ProposalWorkflowService.IsEquivalentRole(System.String,System.String)">
+            <summary>
+            Public alias-aware role comparison for permission checks.
+            </summary>
+        </member>
         <member name="M:docusystem.Services.ProposalWorkflowService.InferFlowTypeFromText(System.String)">
             <summary>
             Infer proposal flow from backend wording (e.g. "Curricular" / "Non-curricular").
@@ -632,6 +593,13 @@
         </member>
         <member name="M:docusystem.Services.ProposalWorkflowService.InferFlowTypeFromProposal(docusystem.Models.Proposal)">
             <summary>Infer flow from known proposal extra-data keys.</summary>
+        </member>
+        <member name="M:docusystem.Services.ProposalWorkflowService.StageNamesEquivalent(System.String,System.String)">
+            <summary>
+            Accept backend/staff aliases for the same SDAO stages.
+            This keeps flow logic working when APIs return "SDAO Staff"
+            while the configured stage labels are "SDAO Assistant"/"SDAO Coordinator".
+            </summary>
         </member>
         <member name="M:docusystem.Services.ProposalWorkflowService.GetCompactWorkflowNote(docusystem.Models.ApprovalFlowType)">
             <summary>Single short line for proposal details UI (full order is on the approval steps list).</summary>

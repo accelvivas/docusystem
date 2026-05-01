@@ -56,7 +56,10 @@ public partial class DashboardPage : ContentPage
 			: currentUser.Role;
 		ResponsibilityHintLabel.Text = BuildResponsibilityLine(currentUser.Role);
 
-		var proposals = (await _proposalService.GetPendingApprovalsAsync()).ToList();
+		var trackingOnly = IsRsoPresident(currentUser);
+		var proposals = trackingOnly
+			? (await _proposalService.GetMySubmissionsAsync()).ToList()
+			: (await _proposalService.GetPendingApprovalsAsync()).ToList();
 		var hasLiveData = proposals.Count > 0;
 		var weekStart = DateTime.Today.AddDays(-7);
 
@@ -82,13 +85,6 @@ public partial class DashboardPage : ContentPage
 			 string.Equals(p.Status, "Submitted", StringComparison.OrdinalIgnoreCase)) &&
 			p.SubmittedDate < DateTime.Today.AddDays(-7));
 
-		// If backend data is not available yet, keep the card layout useful with starter placeholders.
-		PendingApprovalsCountLabel.Text = (hasLiveData ? needsMyReview : 0).ToString();
-		RevisionFollowUpCountLabel.Text = (hasLiveData ? revisionFollowUp : 0).ToString();
-		ApprovedThisWeekCountLabel.Text = (hasLiveData ? approvedThisWeek : 0).ToString();
-		RejectedReturnedWeekCountLabel.Text = (hasLiveData ? rejectedOrReturnedThisWeek : 0).ToString();
-		OverdueItemsCountLabel.Text = (hasLiveData ? overdueItems : 0).ToString();
-
 		NeedsAttentionLabel.Text = BuildNeedsAttentionText(
 			currentUser.Role,
 			needsMyReview,
@@ -106,7 +102,9 @@ public partial class DashboardPage : ContentPage
 
 	private static string BuildResponsibilityLine(string role)
 	{
-		return "Review proposals when they reach your stage (Pending Approvals).";
+		return IsRsoPresident(role)
+			? "Track your submitted proposals and monitor their current routing stage."
+			: "Review proposals when they reach your stage (Pending Approvals).";
 	}
 
 	private static string BuildNeedsAttentionText(
@@ -116,6 +114,31 @@ public partial class DashboardPage : ContentPage
 		int approvedThisWeek,
 		int overdueItems)
 	{
+		if (IsRsoPresident(role))
+		{
+			var trackingLines = new List<string>();
+			if (needsMyReview > 0)
+			{
+				trackingLines.Add($"• {needsMyReview} of your submissions are currently in routing/review.");
+			}
+			if (revisionFollowUp > 0)
+			{
+				trackingLines.Add($"• {revisionFollowUp} of your submissions were returned for revision.");
+			}
+			if (approvedThisWeek > 0)
+			{
+				trackingLines.Add($"• {approvedThisWeek} of your submissions were approved this week.");
+			}
+			if (overdueItems > 0)
+			{
+				trackingLines.Add($"• {overdueItems} of your submissions are waiting longer than expected.");
+			}
+
+			return trackingLines.Count == 0
+				? "No urgent updates. Open Pending Approvals to monitor your submitted proposals."
+				: string.Join('\n', trackingLines);
+		}
+
 		var lines = new List<string>();
 		if (needsMyReview > 0)
 		{
@@ -144,6 +167,23 @@ public partial class DashboardPage : ContentPage
 
 		return string.Join('\n', lines);
 	}
+
+	private static bool IsRsoPresident(User? user)
+	{
+		if (user is null)
+		{
+			return false;
+		}
+
+		return IsRsoPresident(user.Role) ||
+		       string.Equals(user.RoleKey, "rso_president", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(user.RoleKey, "org_officer", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsRsoPresident(string? role) =>
+		!string.IsNullOrWhiteSpace(role) &&
+		(string.Equals(role, "RSO President", StringComparison.OrdinalIgnoreCase) ||
+		 string.Equals(role, "Organization Officer", StringComparison.OrdinalIgnoreCase));
 
 	/// <summary>Dashboard → full Pending Approvals list (All).</summary>
 	private async void OnGoToPendingApprovalsBrowseClicked(object? sender, EventArgs e) =>
