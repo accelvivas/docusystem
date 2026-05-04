@@ -105,10 +105,20 @@ public class NotificationItem
 		FirstNonEmpty(MessageBody, Message, Body, BuildFallbackBody());
 
 	[JsonIgnore]
-	public string DisplayProposalTitle => FirstNonEmpty(ProposalTitle, ActivityTitle, "Untitled proposal");
+	public bool HasProposalTitleContext =>
+		!string.IsNullOrWhiteSpace(ProposalTitle) || !string.IsNullOrWhiteSpace(ActivityTitle);
 
 	[JsonIgnore]
-	public string DisplayOrganizationName => FirstNonEmpty(OrganizationName, Organization, "Unknown organization");
+	public bool HasOrganizationContext =>
+		!string.IsNullOrWhiteSpace(OrganizationName) || !string.IsNullOrWhiteSpace(Organization);
+
+	/// <summary>Empty when the API did not send proposal title fields (Laravel index only sends title/message/type/link).</summary>
+	[JsonIgnore]
+	public string DisplayProposalTitle => FirstNonEmpty(ProposalTitle, ActivityTitle);
+
+	/// <summary>Empty when the API did not send organization fields.</summary>
+	[JsonIgnore]
+	public string DisplayOrganizationName => FirstNonEmpty(OrganizationName, Organization);
 
 	[JsonIgnore]
 	public string DisplayStage => FirstNonEmpty(StageName, ReviewerLevel, Stage);

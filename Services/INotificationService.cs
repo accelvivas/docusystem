@@ -7,6 +7,12 @@ namespace docusystem.Services;
 /// </summary>
 public interface INotificationService
 {
+	/// <summary>
+	/// When the last <see cref="GetNotificationsAsync"/> response included <c>meta.unread_count</c>
+	/// (as in the Laravel <c>NotificationController@index</c>), mirrors that value; otherwise <see langword="null"/>.
+	/// </summary>
+	int? LastListUnreadCountFromMeta { get; }
+
 	/// <summary>GET notifications (tries <c>api/notifications</c> and common alternates). Laravel scopes to the authenticated user / approver.</summary>
 	Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync(CancellationToken cancellationToken = default);
 

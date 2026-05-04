@@ -8,7 +8,7 @@
             <summary>Which approval chain applies for this proposal.</summary>
         </member>
         <member name="F:docusystem.Models.ApprovalFlowType.Academic">
-            <summary>Curricular events: Adviser → Program Chair → Dean → … → Executive Director.</summary>
+            <summary>Co-curricular events: Adviser → Program Chair → Dean → … → Executive Director.</summary>
         </member>
         <member name="F:docusystem.Models.ApprovalFlowType.NonAcademic">
             <summary>Non-curricular: Adviser first, then direct to SDAO chain (Program Chair and Dean skipped).</summary>
@@ -36,6 +36,12 @@
             Supports both old and new Laravel payload shapes.
             </summary>
         </member>
+        <member name="P:docusystem.Models.NotificationItem.DisplayProposalTitle">
+            <summary>Empty when the API did not send proposal title fields (Laravel index only sends title/message/type/link).</summary>
+        </member>
+        <member name="P:docusystem.Models.NotificationItem.DisplayOrganizationName">
+            <summary>Empty when the API did not send organization fields.</summary>
+        </member>
         <member name="T:docusystem.Models.Proposal">
             <summary>
             Proposal summary/detail. Canonical property names match the existing UI; the
@@ -59,7 +65,7 @@
         </member>
         <member name="P:docusystem.Models.Proposal.ApprovalFlowType">
             <summary>
-            Whether this proposal follows the Academic or Non-Academic signatory chain (map from API when available).
+            Whether this proposal follows the Co-curricular (academic chain) or Non-curricular signatory chain (map from API when available).
             </summary>
         </member>
         <member name="P:docusystem.Models.Proposal.ExtraData">
@@ -145,10 +151,11 @@
         <member name="T:docusystem.Models.RoleIdCatalog">
             <summary>
             Default rows for <c>roles</c> (id, name, display_name) when the API only returns <c>role_id</c> or a role row with <c>id</c> and no <c>name</c> yet.
+            Aligned with Laravel/Postgres seeds: <c>rso_president</c> … <c>admin</c>, <c>student</c>.
             </summary>
         </member>
         <member name="M:docusystem.Models.RoleIdCatalog.TryGetDisplayName(System.Int32,System.String@)">
-            <summary>Matches typical <c>roles.id</c> / <c>users.role_id</c> (1…8).</summary>
+            <summary>Matches typical <c>roles.id</c> / <c>users.role_id</c> (1…9).</summary>
         </member>
         <member name="T:docusystem.Models.Supabase.ProposalRow">
             <summary>Maps to Postgres table (default <c>proposals</c>). Rename <see cref="T:Supabase.Postgrest.Attributes.TableAttribute"/> if your schema differs.</summary>
@@ -178,6 +185,9 @@
         <member name="P:docusystem.Models.User.RoleTypeCamel">
             <summary>Same as <see cref="P:docusystem.Models.User.RoleType"/> when the API returns camelCase JSON.</summary>
         </member>
+        <member name="P:docusystem.Models.User.EffectiveRoleType">
+            <summary>Laravel mobile contract: high-level account kind (e.g. <c>approver</c>, <c>org_officer</c>).</summary>
+        </member>
         <member name="P:docusystem.Models.User.RoleId">
             <summary>FK to <c>roles.id</c> when the API only sends an id, not a nested <c>role</c> object.</summary>
         </member>
@@ -195,6 +205,14 @@
         </member>
         <member name="P:docusystem.Models.User.OrganizationName">
             <summary>RSO / organization the user represents (e.g. RSO President scope). From Laravel <c>organization_name</c> on the user or membership.</summary>
+        </member>
+        <member name="M:docusystem.Models.User.NormalizeNestedRoleFromForeignKey">
+            <summary>
+            Laravel compares <c>auth()->user()->role_id</c> to <c>approval_workflow_steps.role_id</c>.
+            Some user JSON returns a nested <c>role</c> object whose <c>id</c> does not match top-level <c>role_id</c>,
+            which breaks client-side workflow matching. When <c>role_id</c> is present, treat it as authoritative
+            and align <see cref="P:docusystem.Models.User.UserRole"/> to that id (when the catalog knows the role).
+            </summary>
         </member>
         <member name="P:docusystem.Models.User.DisplayName">
             <summary>Name for UI — uses full_name from API, or first + last, or email local-part.</summary>
@@ -228,6 +246,18 @@
             show Approved immediately (even before submit tap).
             </summary>
         </member>
+        <member name="M:docusystem.Pages.Approvals.ProposalDetailsPage.MakeStableFieldKey(System.String,System.String)">
+            <summary>
+            Stable API keys must be unique per proposal batch. Labels repeat across steps (e.g. two "Venue"
+            rows) — Postgres UPSERT fails if two rows share the same conflict target (<c>field_key</c>).
+            </summary>
+        </member>
+        <member name="M:docusystem.Pages.Approvals.ProposalDetailsPage.WorkflowCurrentStepMatchesReviewer(docusystem.Models.User)">
+            <summary>
+            True when locally built workflow marks an explicit current step and it matches this reviewer.
+            Used when API <see cref="P:docusystem.Models.Proposal.Status"/> is not one of our actionable labels but routing is active.
+            </summary>
+        </member>
         <member name="T:docusystem.Pages.Dashboard.DashboardPage">
             <summary>
             Dashboard — counts from <see cref="T:docusystem.Services.IProposalService"/> (empty until API is wired).
@@ -241,6 +271,18 @@
         </member>
         <member name="M:docusystem.Pages.Dashboard.DashboardPage.OnViewApprovedClicked(System.Object,System.EventArgs)">
             <summary>Completed count card — same queue with All filter (fully approved may be off-queue depending on API).</summary>
+        </member>
+        <member name="M:docusystem.Pages.Dashboard.DashboardPage.IsActiveRoutingStatus(System.String)">
+            <summary>Statuses that mean the proposal is still moving through review (not terminal, not returned).</summary>
+        </member>
+        <member name="M:docusystem.Pages.Dashboard.DashboardPage.IsApproverPendingQueueAttention(docusystem.Models.Proposal)">
+            <summary>
+            Approver pending queue: anything still actionable counts as needing attention except
+            returned / rejected / fully done. Unknown non-terminal labels still count (same as list presence).
+            </summary>
+        </member>
+        <member name="M:docusystem.Pages.Dashboard.DashboardPage.IsRsoRoutingInProgressStatus(docusystem.Models.Proposal)">
+            <summary>RSO "my submissions" — in-flight routing/review only (not final states).</summary>
         </member>
         <member name="T:docusystem.Pages.Login.LoginPage">
             <summary>
@@ -320,6 +362,12 @@
             flags from role and workflow stage when needed for the UI.
             </summary>
         </member>
+        <member name="M:docusystem.Services.ApprovalRules.GetReviewerRoleHints(docusystem.Models.User)">
+            <summary>
+            Collects labels/slugs that should match <see cref="T:docusystem.Services.ProposalWorkflowService"/> stage names.
+            Uses <see cref="P:docusystem.Models.User.Role"/>, <see cref="P:docusystem.Models.User.RoleId"/> (catalog), and <see cref="P:docusystem.Models.User.RoleKey"/>.
+            </summary>
+        </member>
         <member name="M:docusystem.Services.ApprovalRules.ApplyWorkflowPermissions(docusystem.Models.Proposal,docusystem.Models.User)">
             <summary>
             Sets <see cref="P:docusystem.Models.Proposal.CanEdit"/> and <see cref="P:docusystem.Models.Proposal.CanApprove"/> from the current user, role, and stage.
@@ -333,6 +381,13 @@
         </member>
         <member name="F:docusystem.Services.ApprovalService.ApprovalSequence">
             <summary>Academic chain only — prefer building steps from <see cref="M:docusystem.Services.ApprovalService.BuildApprovalSteps(docusystem.Models.Proposal)"/> per proposal.</summary>
+        </member>
+        <member name="M:docusystem.Services.ApprovalService.ResolveActionFailureMessage(System.Net.HttpStatusCode,System.String,System.String)">
+            <summary>
+            Builds a clearer mobile message for failed approve/return/reject calls. When the
+            backend returns a stage-assignment 403 we surface specific guidance so users see
+            the real reason instead of a generic “Approval failed” line.
+            </summary>
         </member>
         <member name="T:docusystem.Services.ApprovalWorkflow">
             <summary>
@@ -366,6 +421,9 @@
         </member>
         <member name="M:docusystem.Services.AuthService.GetLaravelUserFromApiUserEndpointAsync(System.Threading.CancellationToken)">
             <summary>GET auth user (Sanctum) — first success wins; some apps use <c>me</c> or <c>v1</c> instead of <c>user</c>.</summary>
+        </member>
+        <member name="M:docusystem.Services.AuthService.NormalizeUserRoleForeignKey(docusystem.Models.User)">
+            <summary>Align nested <c>role</c> to <c>role_id</c> so client matches Laravel <c>currentStepForUser</c>.</summary>
         </member>
         <member name="M:docusystem.Services.AuthService.MergeLaravelUserProfile(docusystem.Models.User,docusystem.Models.User)">
             <summary>Keeps names from login when <c>api/user</c> is thin; keeps role from API when present.</summary>
@@ -452,6 +510,12 @@
         <member name="T:docusystem.Services.INotificationService">
             <summary>
             In-app notifications from Laravel.
+            </summary>
+        </member>
+        <member name="P:docusystem.Services.INotificationService.LastListUnreadCountFromMeta">
+            <summary>
+            When the last <see cref="M:docusystem.Services.INotificationService.GetNotificationsAsync(System.Threading.CancellationToken)"/> response included <c>meta.unread_count</c>
+            (as in the Laravel <c>NotificationController@index</c>), mirrors that value; otherwise <see langword="null"/>.
             </summary>
         </member>
         <member name="M:docusystem.Services.INotificationService.GetNotificationsAsync(System.Threading.CancellationToken)">
@@ -557,6 +621,12 @@
         <member name="T:docusystem.Services.NotificationService">
             <summary>Notifications from the Laravel API (scoped server-side to the signed-in user / approver).</summary>
         </member>
+        <member name="P:docusystem.Services.NotificationService.LastListUnreadCountFromMeta">
+            <inheritdoc />
+        </member>
+        <member name="M:docusystem.Services.NotificationService.TryReadMetaUnreadCount(System.String)">
+            <summary>Laravel <c>GET /api/notifications</c> returns <c>meta.unread_count</c> alongside <c>data</c>.</summary>
+        </member>
         <member name="T:docusystem.Services.ProposalService">
             <summary>
             Proposals — Laravel API or direct Supabase (<see cref="P:docusystem.Services.MobileDataOptions.Backend"/>).
@@ -573,7 +643,7 @@
         </member>
         <member name="T:docusystem.Services.ProposalWorkflowService">
             <summary>
-            Ordered signatories for Curricular vs Non-curricular events
+            Ordered signatories for Co-curricular vs Non-curricular events
             (client-side until the API supplies a full chain).
             </summary>
         </member>
@@ -587,8 +657,8 @@
         </member>
         <member name="M:docusystem.Services.ProposalWorkflowService.InferFlowTypeFromText(System.String)">
             <summary>
-            Infer proposal flow from backend wording (e.g. "Curricular" / "Non-curricular").
-            Defaults to Curricular when missing/unknown.
+            Infer proposal flow from backend wording (e.g. "Co-curricular" / "Curricular" / "Non-curricular").
+            Defaults to Co-curricular when missing/unknown.
             </summary>
         </member>
         <member name="M:docusystem.Services.ProposalWorkflowService.InferFlowTypeFromProposal(docusystem.Models.Proposal)">
@@ -599,6 +669,12 @@
             Accept backend/staff aliases for the same SDAO stages.
             This keeps flow logic working when APIs return "SDAO Staff"
             while the configured stage labels are "SDAO Assistant"/"SDAO Coordinator".
+            </summary>
+        </member>
+        <member name="M:docusystem.Services.ProposalWorkflowService.IsAdviserLikeStage(System.String)">
+            <summary>
+            True when <paramref name="normalizedKey"/> (already lowercased, spaced) denotes the
+            first-line adviser stage, including common prefixes used by the web API.
             </summary>
         </member>
         <member name="M:docusystem.Services.ProposalWorkflowService.GetCompactWorkflowNote(docusystem.Models.ApprovalFlowType)">

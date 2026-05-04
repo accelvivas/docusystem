@@ -92,6 +92,7 @@ namespace docusystem.Services;
 				await _session.SetFromLoginAsync(parsed.User, parsed.Token, cancellationToken).ConfigureAwait(false);
 				var fromApi = await GetLaravelUserFromApiUserEndpointAsync(cancellationToken).ConfigureAwait(false);
 				var finalUser = MergeLaravelUserProfile(parsed.User, fromApi) ?? parsed.User;
+				NormalizeUserRoleForeignKey(finalUser);
 				await _session.SetFromLoginAsync(finalUser, parsed.Token, cancellationToken).ConfigureAwait(false);
 				return LoginResult.Ok(finalUser, parsed.Token);
 			}
@@ -181,6 +182,7 @@ namespace docusystem.Services;
 				// Many backends omit role on POST /api/login; GET /api/user usually has role / role_type.
 				var fromApi = await GetLaravelUserFromApiUserEndpointAsync(cancellationToken).ConfigureAwait(false);
 				var finalUser = MergeLaravelUserProfile(parsed.User, fromApi) ?? parsed.User;
+				NormalizeUserRoleForeignKey(finalUser);
 				await _session.SetFromLoginAsync(finalUser, parsed.Token, cancellationToken).ConfigureAwait(false);
 				return LoginResult.Ok(finalUser, parsed.Token);
 			}
@@ -299,6 +301,7 @@ namespace docusystem.Services;
 			var fromApi = await GetLaravelUserFromApiUserEndpointAsync(cancellationToken).ConfigureAwait(false);
 			var local = _session.GetCurrentUser();
 			var merged = MergeLaravelUserProfile(local, fromApi);
+			NormalizeUserRoleForeignKey(merged);
 			if (merged is not null && !string.IsNullOrWhiteSpace(merged.Email))
 			{
 				await _session
@@ -359,27 +362,26 @@ namespace docusystem.Services;
 		}
 
 		var user = ApiUserJson.DeserializeUser(body, JsonOptions);
-		if (user is not null)
+		if (user is null)
 		{
-			return user;
+			try
+			{
+				user = JsonSerializer.Deserialize<User>(body, JsonOptions);
+			}
+			catch (JsonException)
+			{
+				user = null;
+			}
 		}
 
-		try
-		{
-			user = JsonSerializer.Deserialize<User>(body, JsonOptions);
-		}
-		catch (JsonException)
-		{
-			return LaravelUserCoercion.TryBuild(body, JsonOptions);
-		}
-
-		if (user is not null)
-		{
-			return user;
-		}
-
-		return LaravelUserCoercion.TryBuild(body, JsonOptions);
+		user ??= LaravelUserCoercion.TryBuild(body, JsonOptions);
+		user?.NormalizeNestedRoleFromForeignKey();
+		return user;
 	}
+
+	/// <summary>Align nested <c>role</c> to <c>role_id</c> so client matches Laravel <c>currentStepForUser</c>.</summary>
+	private static void NormalizeUserRoleForeignKey(User? user) =>
+		user?.NormalizeNestedRoleFromForeignKey();
 
 	private static bool HasAnyRoleData(User? u) =>
 		u is not null && (

@@ -118,12 +118,20 @@ public sealed class RevisionService : IRevisionService
 			return ApiActionResult.Fail("There are no field reviews to submit.");
 		}
 
+		// Same batch must not repeat field_key — Postgres rejects ON CONFLICT when two rows target one row.
+		var deduped = changes
+			.GroupBy(c => (c.FieldKey ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+			.Select(static g => g.Last())
+			.ToList();
+
 		try
 		{
 			var client = _httpClientFactory.CreateClient("LaravelApi");
 			var payload = new
 			{
-				field_reviews = changes
+				field_reviews = deduped,
+				action_source = "mobile",
+				action_timestamp = DateTime.UtcNow
 			};
 
 			using var response = await client.PostAsJsonAsync(

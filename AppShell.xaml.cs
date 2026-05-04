@@ -7,6 +7,7 @@ namespace docusystem;
 public partial class AppShell : Shell
 {
 	private const string NotificationsToolbarClassId = "shell_notifications_bell";
+	private const string NotificationsBadgeToolbarClassId = "shell_notifications_badge";
 
 	private readonly AppSessionService _session;
 	private readonly SessionPersistenceService _persistence;
@@ -62,25 +63,37 @@ public partial class AppShell : Shell
 			return;
 		}
 
-		var item = new ToolbarItem
+		var bellItem = new ToolbarItem
 		{
 			ClassId = NotificationsToolbarClassId,
 			Order = ToolbarItemOrder.Primary,
-			Priority = 100,
+			Priority = 99,
 			Text = string.Empty,
 			IconImageSource = ImageSource.FromFile("bell.svg")
 		};
-		item.Clicked += OnNotificationsToolbarClicked;
-		page.ToolbarItems.Add(item);
+		bellItem.Clicked += OnNotificationsToolbarClicked;
+		page.ToolbarItems.Add(bellItem);
 
 		try
 		{
 			var unread = await _notificationService.GetUnreadCountAsync().ConfigureAwait(true);
-			item.Text = unread > 0 ? unread.ToString() : string.Empty;
+			if (unread > 0)
+			{
+				var badgeItem = new ToolbarItem
+				{
+					ClassId = NotificationsBadgeToolbarClassId,
+					Order = ToolbarItemOrder.Primary,
+					Priority = 100,
+					// Text-only badge near the bell; hidden when unread == 0.
+					Text = unread.ToString()
+				};
+				badgeItem.Clicked += OnNotificationsToolbarClicked;
+				page.ToolbarItems.Add(badgeItem);
+			}
 		}
 		catch
 		{
-			item.Text = string.Empty;
+			// Keep bell even if unread count fails.
 		}
 	}
 
@@ -88,7 +101,8 @@ public partial class AppShell : Shell
 	{
 		for (var i = page.ToolbarItems.Count - 1; i >= 0; i--)
 		{
-			if (page.ToolbarItems[i].ClassId == NotificationsToolbarClassId)
+			if (page.ToolbarItems[i].ClassId == NotificationsToolbarClassId ||
+			    page.ToolbarItems[i].ClassId == NotificationsBadgeToolbarClassId)
 			{
 				page.ToolbarItems.RemoveAt(i);
 			}

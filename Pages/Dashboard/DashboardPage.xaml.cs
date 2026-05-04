@@ -60,30 +60,48 @@ public partial class DashboardPage : ContentPage
 		var proposals = trackingOnly
 			? (await _proposalService.GetMySubmissionsAsync()).ToList()
 			: (await _proposalService.GetPendingApprovalsAsync()).ToList();
-		var hasLiveData = proposals.Count > 0;
 		var weekStart = DateTime.Today.AddDays(-7);
 
-		var needsMyReview = proposals.Count(p =>
-			string.Equals(p.Status, "Under Review", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(p.Status, "Submitted", StringComparison.OrdinalIgnoreCase));
+		// Use the same normalized status strings as the rest of the app (see Proposal.NormalizeStatus).
+		// Pending Approvals API often returns "Pending", not only "Under Review" / "Submitted" — the
+		// dashboard used to count only those two, so it showed "No urgent items" while the list had rows.
+		var needsMyReview = trackingOnly
+			? proposals.Count(p => IsRsoRoutingInProgressStatus(p))
+			: proposals.Count(p => IsApproverPendingQueueAttention(p));
 
 		var revisionFollowUp = proposals.Count(p =>
-			string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase));
+			string.Equals(NormalizeStatus(p), "Returned for Revision", StringComparison.OrdinalIgnoreCase));
 
 		var approvedThisWeek = proposals.Count(p =>
-			(string.Equals(p.Status, "Fully Approved", StringComparison.OrdinalIgnoreCase) ||
-			 string.Equals(p.Status, "Approved", StringComparison.OrdinalIgnoreCase)) &&
-			((p.FullyApprovedAt ?? p.SubmittedDate) >= weekStart));
+		{
+			var s = NormalizeStatus(p);
+			return (string.Equals(s, "Fully Approved", StringComparison.OrdinalIgnoreCase) ||
+			        string.Equals(s, "Approved", StringComparison.OrdinalIgnoreCase)) &&
+			       (p.FullyApprovedAt ?? p.SubmittedDate) >= weekStart;
+		});
 
 		var rejectedOrReturnedThisWeek = proposals.Count(p =>
-			(string.Equals(p.Status, "Rejected", StringComparison.OrdinalIgnoreCase) ||
-			 string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase)) &&
-			p.SubmittedDate >= weekStart);
+		{
+			var s = NormalizeStatus(p);
+			return (string.Equals(s, "Rejected", StringComparison.OrdinalIgnoreCase) ||
+			        string.Equals(s, "Returned for Revision", StringComparison.OrdinalIgnoreCase)) &&
+			       p.SubmittedDate >= weekStart;
+		});
 
 		var overdueItems = proposals.Count(p =>
-			(string.Equals(p.Status, "Under Review", StringComparison.OrdinalIgnoreCase) ||
-			 string.Equals(p.Status, "Submitted", StringComparison.OrdinalIgnoreCase)) &&
-			p.SubmittedDate < DateTime.Today.AddDays(-7));
+		{
+			var s = NormalizeStatus(p);
+			if (string.Equals(s, "Returned for Revision", StringComparison.OrdinalIgnoreCase) ||
+			    string.Equals(s, "Rejected", StringComparison.OrdinalIgnoreCase) ||
+			    string.Equals(s, "Fully Approved", StringComparison.OrdinalIgnoreCase))
+			{
+				return false;
+			}
+
+			return IsActiveRoutingStatus(s) &&
+			       p.SubmittedDate != default &&
+			       p.SubmittedDate < DateTime.Today.AddDays(-7);
+		});
 
 		NeedsAttentionLabel.Text = BuildNeedsAttentionText(
 			currentUser.Role,
@@ -204,5 +222,38 @@ public partial class DashboardPage : ContentPage
 	{
 		var safe = Uri.EscapeDataString(filter);
 		await Shell.Current.GoToAsync($"//pendingapprovals?filter={safe}");
+	}
+
+	private static string NormalizeStatus(Proposal p) =>
+		Proposal.NormalizeStatus(string.IsNullOrWhiteSpace(p.Status) ? null : p.Status);
+
+	/// <summary>Statuses that mean the proposal is still moving through review (not terminal, not returned).</summary>
+	private static bool IsActiveRoutingStatus(string s) =>
+		string.Equals(s, "Pending", StringComparison.OrdinalIgnoreCase) ||
+		string.Equals(s, "Under Review", StringComparison.OrdinalIgnoreCase) ||
+		string.Equals(s, "Submitted", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Approver pending queue: anything still actionable counts as needing attention except
+	/// returned / rejected / fully done. Unknown non-terminal labels still count (same as list presence).
+	/// </summary>
+	private static bool IsApproverPendingQueueAttention(Proposal p)
+	{
+		var s = NormalizeStatus(p);
+		if (string.Equals(s, "Returned for Revision", StringComparison.OrdinalIgnoreCase) ||
+		    string.Equals(s, "Rejected", StringComparison.OrdinalIgnoreCase) ||
+		    string.Equals(s, "Fully Approved", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	/// <summary>RSO "my submissions" — in-flight routing/review only (not final states).</summary>
+	private static bool IsRsoRoutingInProgressStatus(Proposal p)
+	{
+		var s = NormalizeStatus(p);
+		return IsActiveRoutingStatus(s);
 	}
 }

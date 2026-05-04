@@ -27,8 +27,12 @@ public sealed class NotificationService : INotificationService
 		_httpClientFactory = httpClientFactory;
 	}
 
+	/// <inheritdoc />
+	public int? LastListUnreadCountFromMeta { get; private set; }
+
 	public async Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync(CancellationToken cancellationToken = default)
 	{
+		LastListUnreadCountFromMeta = null;
 		try
 		{
 			var client = _httpClientFactory.CreateClient("LaravelApi");
@@ -47,6 +51,7 @@ public sealed class NotificationService : INotificationService
 				}
 
 				var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+				LastListUnreadCountFromMeta = TryReadMetaUnreadCount(json);
 				return ParseNotificationList(json);
 			}
 
@@ -193,6 +198,37 @@ public sealed class NotificationService : INotificationService
 	private static List<NotificationItem> DeserializeNotificationArray(JsonElement arr)
 	{
 		return arr.Deserialize<List<NotificationItem>>(JsonOptions) ?? [];
+	}
+
+	/// <summary>Laravel <c>GET /api/notifications</c> returns <c>meta.unread_count</c> alongside <c>data</c>.</summary>
+	private static int? TryReadMetaUnreadCount(string json)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return null;
+		}
+
+		try
+		{
+			using var doc = JsonDocument.Parse(json);
+			var root = doc.RootElement;
+			if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("meta", out var meta) ||
+			    meta.ValueKind != JsonValueKind.Object)
+			{
+				return null;
+			}
+
+			if (meta.TryGetProperty("unread_count", out var u) && u.ValueKind == JsonValueKind.Number &&
+			    u.TryGetInt32(out var n))
+			{
+				return n;
+			}
+		}
+		catch (JsonException)
+		{
+		}
+
+		return null;
 	}
 
 	private static int ParseUnreadCount(string json)

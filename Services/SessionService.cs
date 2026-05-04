@@ -25,6 +25,7 @@ public sealed class SessionService : ISessionService
 	/// <inheritdoc />
 	public async Task SetFromLoginAsync(User user, string? accessToken, CancellationToken cancellationToken = default)
 	{
+		user.NormalizeNestedRoleFromForeignKey();
 		_appSession.SetCurrentUser(user, accessToken);
 		await _persistence.SaveAsync(user, accessToken, cancellationToken).ConfigureAwait(false);
 	}

@@ -83,6 +83,7 @@ public sealed class SessionPersistenceService
 			return;
 		}
 
+		user.NormalizeNestedRoleFromForeignKey();
 		session.SetCurrentUser(user, token);
 
 		await MainThread.InvokeOnMainThreadAsync(async () =>

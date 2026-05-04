@@ -60,6 +60,10 @@ public class User
 	[JsonPropertyName("account_type")]
 	public string? AccountType { get; set; }
 
+	/// <summary>Laravel mobile contract: high-level account kind (e.g. <c>approver</c>, <c>org_officer</c>).</summary>
+	[JsonPropertyName("effective_role_type")]
+	public string? EffectiveRoleType { get; set; }
+
 	/// <summary>FK to <c>roles.id</c> when the API only sends an id, not a nested <c>role</c> object.</summary>
 	[JsonPropertyName("role_id")]
 	public int? RoleId { get; set; }
@@ -124,6 +128,38 @@ public class User
 	/// <summary>RSO / organization the user represents (e.g. RSO President scope). From Laravel <c>organization_name</c> on the user or membership.</summary>
 	[JsonPropertyName("organization_name")]
 	public string? OrganizationName { get; set; }
+
+	/// <summary>
+	/// Laravel compares <c>auth()->user()->role_id</c> to <c>approval_workflow_steps.role_id</c>.
+	/// Some user JSON returns a nested <c>role</c> object whose <c>id</c> does not match top-level <c>role_id</c>,
+	/// which breaks client-side workflow matching. When <c>role_id</c> is present, treat it as authoritative
+	/// and align <see cref="UserRole"/> to that id (when the catalog knows the role).
+	/// </summary>
+	public void NormalizeNestedRoleFromForeignKey()
+	{
+		if (ResolvedRoleId is not int rid || rid <= 0)
+		{
+			return;
+		}
+
+		if (!RoleIdCatalog.TryGetDisplayName(rid, out var display) ||
+		    !RoleIdCatalog.TryGetNameSlug(rid, out var slug))
+		{
+			return;
+		}
+
+		if (UserRole is not null && UserRole.Id == rid)
+		{
+			return;
+		}
+
+		UserRole = new UserRole
+		{
+			Id = rid,
+			Name = slug,
+			DisplayName = display
+		};
+	}
 
 	/// <summary>Name for UI — uses full_name from API, or first + last, or email local-part.</summary>
 	[JsonIgnore]
@@ -251,12 +287,15 @@ public class User
 		{
 			"rso_president" => "RSO President",
 			"adviser" => "Adviser",
+			"advisor" => "Adviser",
+			"faculty_adviser" or "faculty_advisor" or "org_adviser" or "organization_adviser" => "Adviser",
 			"program_chair" => "Program Chair",
 			"dean" => "Dean",
 			"academic_director" => "Academic Director",
 			"executive_director" => "Executive Director",
 			"sdao_staff" => "SDAO Staff",
 			"admin" => "Admin",
+			"student" => "Student",
 			// NULP sdao: users.role_type ENUM
 			"org_officer" => "Organization Officer",
 			"approver" => "Approver",

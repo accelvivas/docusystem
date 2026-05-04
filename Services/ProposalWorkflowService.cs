@@ -4,12 +4,12 @@ using docusystem.Models;
 namespace docusystem.Services;
 
 /// <summary>
-/// Ordered signatories for Curricular vs Non-curricular events
+/// Ordered signatories for Co-curricular vs Non-curricular events
 /// (client-side until the API supplies a full chain).
 /// </summary>
 public static class ProposalWorkflowService
 {
-	// Curricular: Adviser -> Program Chair -> Dean -> SDAO chain -> Executive Director
+	// Co-curricular: Adviser -> Program Chair -> Dean -> SDAO chain -> Executive Director
 	private static readonly IReadOnlyList<string> Curricular =
 	[
 		"Adviser",
@@ -17,7 +17,7 @@ public static class ProposalWorkflowService
 		"Dean",
 		"SDAO Assistant",
 		"SDAO Coordinator",
-		"Academic Services",
+		"Assistant Director",
 		"Academic Director",
 		"Executive Director"
 	];
@@ -28,7 +28,7 @@ public static class ProposalWorkflowService
 		"Adviser",
 		"SDAO Assistant",
 		"SDAO Coordinator",
-		"Academic Services",
+		"Assistant Director",
 		"Academic Director",
 		"Executive Director"
 	];
@@ -70,17 +70,17 @@ public static class ProposalWorkflowService
 		StageNamesEquivalent(left, right);
 
 	public static string GetEventTypeDisplay(ApprovalFlowType flowType) =>
-		flowType == ApprovalFlowType.NonAcademic ? "Non-curricular" : "Curricular";
+		flowType == ApprovalFlowType.NonAcademic ? "Non-curricular" : "Co-curricular";
 
 	public static string GetFlowChainSummary(ApprovalFlowType flowType) =>
 		flowType == ApprovalFlowType.NonAcademic
-			? "Adviser → SDAO Assistant → SDAO Coordinator → Academic Services → Academic Director → Executive Director"
-			: "Adviser → Program Chair → Dean → SDAO Assistant → SDAO Coordinator → Academic Services → Academic Director → Executive Director";
+			? "Adviser → SDAO Assistant → SDAO Coordinator → Assistant Director → Academic Director → Executive Director"
+			: "Adviser → Program Chair → Dean → SDAO Assistant → SDAO Coordinator → Assistant Director → Academic Director → Executive Director";
 
 	public static string GetFlowHelperText(ApprovalFlowType flowType) =>
 		flowType == ApprovalFlowType.NonAcademic
 			? "Non-curricular: routing starts at Adviser, then proceeds directly to SDAO signatories."
-			: "Curricular: routing starts at Adviser then continues through signatories.";
+			: "Co-curricular: routing starts at Adviser then continues through signatories.";
 
 	public static string GetSkippedStagesNote(ApprovalFlowType flowType) =>
 		flowType == ApprovalFlowType.NonAcademic
@@ -88,8 +88,8 @@ public static class ProposalWorkflowService
 			: string.Empty;
 
 	/// <summary>
-	/// Infer proposal flow from backend wording (e.g. "Curricular" / "Non-curricular").
-	/// Defaults to Curricular when missing/unknown.
+	/// Infer proposal flow from backend wording (e.g. "Co-curricular" / "Curricular" / "Non-curricular").
+	/// Defaults to Co-curricular when missing/unknown.
 	/// </summary>
 	public static ApprovalFlowType InferFlowTypeFromText(string? text)
 	{
@@ -104,7 +104,9 @@ public static class ProposalWorkflowService
 			return ApprovalFlowType.NonAcademic;
 		}
 
-		if (v.Contains("curricular"))
+		// Co-curricular (preferred wording) and legacy "Curricular" still map to the academic chain.
+		if (v.Contains("co-curricular") || v.Contains("co curricular") || v.Contains("cocurricular") ||
+		    v.Contains("curricular"))
 		{
 			return ApprovalFlowType.Academic;
 		}
@@ -179,7 +181,62 @@ public static class ProposalWorkflowService
 			return "sdao staff";
 		}
 
+		// Keep old and new naming equivalent while backend labels are transitioning.
+		if (key is "academic services" or "assistant director")
+		{
+			return "assistant director";
+		}
+
+		// Adviser/Advisor naming variance across systems (exact typo).
+		if (key is "advisor")
+		{
+			return "adviser";
+		}
+
+		// Laravel / org-specific labels often expand "Adviser" (e.g. "Faculty Adviser",
+		// "Organization Adviser"). Bucket those so queue + detail payloads still match the
+		// canonical workflow stage and the logged-in adviser's role.
+		if (IsAdviserLikeStage(key))
+		{
+			return "adviser";
+		}
+
 		return key;
+	}
+
+	/// <summary>
+	/// True when <paramref name="normalizedKey"/> (already lowercased, spaced) denotes the
+	/// first-line adviser stage, including common prefixes used by the web API.
+	/// </summary>
+	private static bool IsAdviserLikeStage(string normalizedKey)
+	{
+		if (string.IsNullOrEmpty(normalizedKey))
+		{
+			return false;
+		}
+
+		if (normalizedKey is "adviser" or "advisor")
+		{
+			return true;
+		}
+
+		foreach (var token in normalizedKey.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+		{
+			if (token is "adviser" or "advisor")
+			{
+				return true;
+			}
+
+			if (token.StartsWith("adviser", StringComparison.Ordinal) ||
+			    token.StartsWith("advisor", StringComparison.Ordinal))
+			{
+				return true;
+			}
+		}
+
+		// Compact slugs without spaces, e.g. faculty_adviser → faculty adviser earlier.
+		return normalizedKey.Contains("adviser", StringComparison.Ordinal) ||
+		       normalizedKey.Contains("advisor", StringComparison.Ordinal);
 	}
 
 	private static string? FirstNonEmpty(params string?[] values)

@@ -63,7 +63,7 @@ public class Proposal
 	public string? LastRemarks { get; set; }
 
 	/// <summary>
-	/// Whether this proposal follows the Academic or Non-Academic signatory chain (map from API when available).
+	/// Whether this proposal follows the Co-curricular (academic chain) or Non-curricular signatory chain (map from API when available).
 	/// </summary>
 	[JsonIgnore]
 	public ApprovalFlowType ApprovalFlowType { get; set; } = ApprovalFlowType.Academic;
@@ -131,9 +131,19 @@ public class Proposal
 
 			if (string.IsNullOrWhiteSpace(p.CurrentStage))
 			{
+				// Laravel often exposes the active signatory as current_approval_step (string or object)
+				// while older payloads used current_stage / current_step.role_name.
 				p.CurrentStage =
-					ReadNestedString(ext, "current_step", "role_name") ??
-					ReadString(ext, "current_stage") ??
+					ReadNestedString(ext, "current_step", "role_name", "name", "label", "title", "stage_name") ??
+					ReadNestedString(ext, "current_approval_step", "role_name", "name", "label", "title", "stage_name") ??
+					ReadCurrentStageFromWorkflowSummary(ext) ??
+					ReadString(ext,
+						"current_stage",
+						"current_approval_step",
+						"current_step_name",
+						"approval_step",
+						"pending_stage",
+						"workflow_current_role") ??
 					p.CurrentStage;
 			}
 
@@ -301,6 +311,97 @@ public class Proposal
 			else if (el.ValueKind == JsonValueKind.True || el.ValueKind == JsonValueKind.False)
 			{
 				return el.GetBoolean() ? "Yes" : "No";
+			}
+		}
+
+		return null;
+	}
+
+	private static string? ReadCurrentStageFromWorkflowSummary(Dictionary<string, JsonElement> ext)
+	{
+		if (!ext.TryGetValue("workflow_summary", out var summary) || summary.ValueKind != JsonValueKind.Array)
+		{
+			return null;
+		}
+
+		var currentOrder = ReadInt(ext, "current_approval_step", "current_step_order");
+		string? fromCurrentFlag = null;
+
+		foreach (var row in summary.EnumerateArray())
+		{
+			if (row.ValueKind != JsonValueKind.Object)
+			{
+				continue;
+			}
+
+			// Strongest signal: the server marks the active row.
+			if (fromCurrentFlag is null &&
+			    row.TryGetProperty("is_current_step", out var currentEl) &&
+			    currentEl.ValueKind == JsonValueKind.True)
+			{
+				fromCurrentFlag = ReadObjectString(row, "role_name", "stage_name", "role", "name");
+			}
+
+			// Fallback: map numeric current_approval_step -> workflow_summary.step_order.
+			if (currentOrder.HasValue &&
+			    ReadObjectInt(row, "step_order", "step") is int order &&
+			    order == currentOrder.Value)
+			{
+				var role = ReadObjectString(row, "role_name", "stage_name", "role", "name");
+				if (!string.IsNullOrWhiteSpace(role))
+				{
+					return role;
+				}
+			}
+		}
+
+		return fromCurrentFlag;
+	}
+
+	private static string? ReadObjectString(JsonElement obj, params string[] keys)
+	{
+		for (var i = 0; i < keys.Length; i++)
+		{
+			if (!obj.TryGetProperty(keys[i], out var value))
+			{
+				continue;
+			}
+
+			if (value.ValueKind == JsonValueKind.String)
+			{
+				var s = value.GetString();
+				if (!string.IsNullOrWhiteSpace(s))
+				{
+					return s.Trim();
+				}
+			}
+			else if (value.ValueKind == JsonValueKind.Number)
+			{
+				return value.ToString();
+			}
+		}
+
+		return null;
+	}
+
+	private static int? ReadObjectInt(JsonElement obj, params string[] keys)
+	{
+		for (var i = 0; i < keys.Length; i++)
+		{
+			if (!obj.TryGetProperty(keys[i], out var value))
+			{
+				continue;
+			}
+
+			if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var n))
+			{
+				return n;
+			}
+
+			if (value.ValueKind == JsonValueKind.String &&
+			    int.TryParse(value.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+			{
+				return parsed;
 			}
 		}
 

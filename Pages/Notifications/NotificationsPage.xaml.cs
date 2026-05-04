@@ -63,7 +63,8 @@ public partial class NotificationsPage : ContentPage
 	{
 		var items = await _notificationService.GetNotificationsAsync();
 		allNotifications = items.OrderByDescending(n => n.DateCreated).ToList();
-		var unread = allNotifications.Count(n => !n.IsRead);
+		// Laravel index returns meta.unread_count (total unread, not just this page) when available.
+		var unread = _notificationService.LastListUnreadCountFromMeta ?? allNotifications.Count(n => !n.IsRead);
 		UnreadCountLabel.Text = unread.ToString();
 		MarkAllReadBtn.IsVisible = unread > 0;
 		ApplyFilter();
@@ -136,41 +137,53 @@ public partial class NotificationsPage : ContentPage
 				TextColor = isUnread ? Colors.White : Ui.Navy
 			}
 		};
-		var textStack = new VerticalStackLayout
+		var textStack = new VerticalStackLayout { Spacing = 3 };
+		textStack.Children.Add(new Label
 		{
-			Spacing = 3,
-			Children =
+			Text = notification.DisplayTitle,
+			FontSize = 14,
+			FontAttributes = FontAttributes.Bold,
+			TextColor = Ui.Navy
+		});
+		textStack.Children.Add(new Label
+		{
+			Text = string.IsNullOrWhiteSpace(notification.DisplayMessage)
+				? "(No message)"
+				: notification.DisplayMessage,
+			FontSize = 12,
+			TextColor = Ui.NavyMutedText,
+			LineBreakMode = LineBreakMode.WordWrap
+		});
+		// Laravel list payload is usually title + message + type + link only — no proposal/org fields.
+		if (notification.HasProposalTitleContext)
+		{
+			textStack.Children.Add(new Label
 			{
-				new Label
-				{
-					Text = notification.DisplayTitle,
-					FontSize = 14,
-					FontAttributes = FontAttributes.Bold,
-					TextColor = Ui.Navy
-				},
-				new Label
-				{
-					Text = string.IsNullOrWhiteSpace(notification.DisplayMessage)
-						? "(No message)"
-						: notification.DisplayMessage,
-					FontSize = 12,
-					TextColor = Ui.NavyMutedText,
-					LineBreakMode = LineBreakMode.WordWrap
-				},
-				new Label
-				{
-					Text = $"Activity Proposal: {notification.DisplayProposalTitle}",
-					FontSize = 11,
-					TextColor = Ui.Navy
-				},
-				new Label
-				{
-					Text = $"Organization: {notification.DisplayOrganizationName}",
-					FontSize = 11,
-					TextColor = Ui.NavyMutedText
-				}
-			}
-		};
+				Text = $"Activity proposal: {notification.DisplayProposalTitle}",
+				FontSize = 11,
+				TextColor = Ui.Navy
+			});
+		}
+
+		if (notification.HasOrganizationContext)
+		{
+			textStack.Children.Add(new Label
+			{
+				Text = $"Organization: {notification.DisplayOrganizationName}",
+				FontSize = 11,
+				TextColor = Ui.NavyMutedText
+			});
+		}
+
+		if (!string.IsNullOrWhiteSpace(notification.Type))
+		{
+			textStack.Children.Add(new Label
+			{
+				Text = $"Type: {notification.Type}",
+				FontSize = 10,
+				TextColor = Ui.NavyMutedText
+			});
+		}
 		Grid.SetColumn(iconBadge, 0);
 		Grid.SetColumn(textStack, 1);
 
@@ -250,12 +263,32 @@ public partial class NotificationsPage : ContentPage
 
 	private async Task OnNotificationTappedAsync(NotificationItem notification)
 	{
+		// Mark as read first so notification UX still works even when the payload has
+		// no proposal_id (current web API often returns title/message/type/link_url only).
+		if (!notification.IsRead && notification.Id > 0)
+		{
+			_ = _notificationService.MarkAsReadAsync(notification.Id);
+			notification.ReadAt = DateTime.UtcNow;
+			notification.IsReadFlag = true;
+			ApplyFilter();
+			var unread = _notificationService.LastListUnreadCountFromMeta;
+			if (unread.HasValue)
+			{
+				UnreadCountLabel.Text = Math.Max(0, unread.Value - 1).ToString();
+				MarkAllReadBtn.IsVisible = unread.Value - 1 > 0;
+			}
+			else
+			{
+				UnreadCountLabel.Text = allNotifications.Count(n => !n.IsRead).ToString();
+				MarkAllReadBtn.IsVisible = allNotifications.Any(n => !n.IsRead);
+			}
+		}
+
 		if (!TryResolveProposalId(notification, out var proposalId))
 		{
-			await DisplayAlertAsync(
-				"No proposal link",
-				"This notification does not include a proposal you can open from the app.",
-				"OK");
+			// Fallback route by type/target so notifications remain usable even without proposal id.
+			var fallbackRoute = ResolveRouteWithoutProposal(notification);
+			await Shell.Current.GoToAsync(fallbackRoute).ConfigureAwait(true);
 			return;
 		}
 
@@ -273,22 +306,13 @@ public partial class NotificationsPage : ContentPage
 
 			_session.SetSelectedProposal(proposal);
 
-			if (!notification.IsRead && notification.Id > 0)
-			{
-				_ = _notificationService.MarkAsReadAsync(notification.Id);
-				notification.ReadAt = DateTime.UtcNow;
-				notification.IsReadFlag = true;
-				ApplyFilter();
-				UnreadCountLabel.Text = allNotifications.Count(n => !n.IsRead).ToString();
-				MarkAllReadBtn.IsVisible = allNotifications.Any(n => !n.IsRead);
-			}
-
 			var route = ResolveTargetRoute(notification);
 			await Shell.Current.GoToAsync(route).ConfigureAwait(true);
 		}
 		catch (Exception)
 		{
-			await DisplayAlertAsync("Something went wrong", "Could not open this proposal. Try again.", "OK");
+			// Safety fallback: open the list page instead of failing the tap entirely.
+			await Shell.Current.GoToAsync("//pendingapprovals").ConfigureAwait(true);
 		}
 	}
 
@@ -315,6 +339,23 @@ public partial class NotificationsPage : ContentPage
 		};
 	}
 
+	private static string ResolveRouteWithoutProposal(NotificationItem notification)
+	{
+		var target = (notification.ScreenTarget ?? string.Empty).Trim().ToLowerInvariant();
+		if (target.Contains("approval") || target.Contains("pending"))
+		{
+			return "//pendingapprovals";
+		}
+
+		return notification.TypeKey switch
+		{
+			"approval_reminder" => "//pendingapprovals",
+			"new_pending_proposal" => "//pendingapprovals",
+			"status_updated" => "//pendingapprovals",
+			_ => "//pendingapprovals"
+		};
+	}
+
 	private static bool TryResolveProposalId(NotificationItem n, out int id)
 	{
 		id = 0;
@@ -330,16 +371,22 @@ public partial class NotificationsPage : ContentPage
 			return false;
 		}
 
-		var m = Regex.Match(link, @"proposals?\/(\d+)", RegexOptions.IgnoreCase);
-		if (m.Success && int.TryParse(m.Groups[1].Value, out id))
+		// Web app link shapes (path + query).
+		var patterns = new[]
 		{
-			return true;
-		}
+			@"(?:/api)?/proposals/(\d+)",
+			@"proposals?/(\d+)",
+			@"/activity[-_]?proposals?/(\d+)",
+			@"[?&]proposal[_-]?id=(\d+)"
+		};
 
-		m = Regex.Match(link, @"[?&]proposal[_-]?id=(\d+)", RegexOptions.IgnoreCase);
-		if (m.Success && int.TryParse(m.Groups[1].Value, out id))
+		for (var i = 0; i < patterns.Length; i++)
 		{
-			return true;
+			var m = Regex.Match(link, patterns[i], RegexOptions.IgnoreCase);
+			if (m.Success && int.TryParse(m.Groups[1].Value, out id) && id > 0)
+			{
+				return true;
+			}
 		}
 
 		return false;

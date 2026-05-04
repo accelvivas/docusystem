@@ -59,7 +59,8 @@ public sealed class ApprovalService : IApprovalService
 				{
 					StepNumber = index + 1,
 					RoleName = role,
-					Status = status
+					Status = status,
+					IsCurrentStep = index == currentIndex && currentIndex >= 0,
 				};
 			})
 			.ToList();
@@ -74,7 +75,12 @@ public sealed class ApprovalService : IApprovalService
 			// shape consistent with the web flow.
 			using var response = await client.PostAsJsonAsync(
 				$"api/proposals/{proposalId}/approve",
-				new { comments = string.Empty },
+				new
+				{
+					comments = string.Empty,
+					action_source = "mobile",
+					action_timestamp = DateTime.UtcNow
+				},
 				JsonOptions,
 				cancellationToken).ConfigureAwait(false);
 
@@ -84,7 +90,7 @@ public sealed class ApprovalService : IApprovalService
 			}
 
 			var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-			return ApiActionResult.Fail(ExtractMessage(body) ?? $"Approval failed ({(int)response.StatusCode}).");
+			return ApiActionResult.Fail(ResolveActionFailureMessage(response.StatusCode, body, "Approval failed"));
 		}
 		catch (HttpRequestException)
 		{
@@ -109,7 +115,12 @@ public sealed class ApprovalService : IApprovalService
 			var client = _httpClientFactory.CreateClient("LaravelApi");
 			using var response = await client.PostAsJsonAsync(
 				$"api/proposals/{proposalId}/return",
-				new { comments },
+				new
+				{
+					comments,
+					action_source = "mobile",
+					action_timestamp = DateTime.UtcNow
+				},
 				JsonOptions,
 				cancellationToken).ConfigureAwait(false);
 
@@ -119,7 +130,7 @@ public sealed class ApprovalService : IApprovalService
 			}
 
 			var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-			return ApiActionResult.Fail(ExtractMessage(body) ?? $"Could not return proposal ({(int)response.StatusCode}).");
+			return ApiActionResult.Fail(ResolveActionFailureMessage(response.StatusCode, body, "Could not return proposal"));
 		}
 		catch (HttpRequestException)
 		{
@@ -144,7 +155,12 @@ public sealed class ApprovalService : IApprovalService
 			var client = _httpClientFactory.CreateClient("LaravelApi");
 			using var response = await client.PostAsJsonAsync(
 				$"api/proposals/{proposalId}/reject",
-				new { comments },
+				new
+				{
+					comments,
+					action_source = "mobile",
+					action_timestamp = DateTime.UtcNow
+				},
 				JsonOptions,
 				cancellationToken).ConfigureAwait(false);
 
@@ -154,7 +170,7 @@ public sealed class ApprovalService : IApprovalService
 			}
 
 			var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-			return ApiActionResult.Fail(ExtractMessage(body) ?? $"Could not reject proposal ({(int)response.StatusCode}).");
+			return ApiActionResult.Fail(ResolveActionFailureMessage(response.StatusCode, body, "Could not reject proposal"));
 		}
 		catch (HttpRequestException)
 		{
@@ -164,6 +180,25 @@ public sealed class ApprovalService : IApprovalService
 		{
 			return ApiActionResult.Fail("Request timed out.");
 		}
+	}
+
+	/// <summary>
+	/// Builds a clearer mobile message for failed approve/return/reject calls. When the
+	/// backend returns a stage-assignment 403 we surface specific guidance so users see
+	/// the real reason instead of a generic “Approval failed” line.
+	/// </summary>
+	private static string ResolveActionFailureMessage(System.Net.HttpStatusCode status, string body, string defaultPrefix)
+	{
+		var serverMessage = ExtractMessage(body);
+		if ((int)status == 403 &&
+		    !string.IsNullOrWhiteSpace(serverMessage) &&
+		    serverMessage.Contains("assigned approver", StringComparison.OrdinalIgnoreCase))
+		{
+			return serverMessage +
+			       " (The proposal’s current step is not linked to your account. Please ask the web admin to confirm the workflow step assignment for this proposal.)";
+		}
+
+		return serverMessage ?? $"{defaultPrefix} ({(int)status}).";
 	}
 
 	private static string? ExtractMessage(string json)

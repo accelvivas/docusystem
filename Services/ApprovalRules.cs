@@ -1,3 +1,4 @@
+using System.Linq;
 using docusystem.Models;
 
 namespace docusystem.Services;
@@ -9,6 +10,92 @@ namespace docusystem.Services;
 /// </summary>
 public static class ApprovalRules
 {
+	/// <summary>
+	/// Collects labels/slugs that should match <see cref="ProposalWorkflowService"/> stage names.
+	/// Uses <see cref="User.Role"/>, <see cref="User.RoleId"/> (catalog), and <see cref="User.RoleKey"/>.
+	/// </summary>
+	public static IReadOnlyList<string> GetReviewerRoleHints(User user)
+	{
+		var roles = new List<string>();
+
+		if (!string.IsNullOrWhiteSpace(user.Role))
+		{
+			roles.Add(user.Role.Trim());
+		}
+
+		var rid = user.RoleId ?? user.RoleIdCamel;
+		if (rid is int id && id > 0 && RoleIdCatalog.TryGetDisplayName(id, out var catalogLabel))
+		{
+			roles.Add(catalogLabel);
+		}
+
+		AddWorkflowHintsFromRoleKey(user.RoleKey, roles);
+
+		var distinct = roles
+			.Where(r => !string.IsNullOrWhiteSpace(r))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+
+		var rk = user.RoleKey?.Trim().ToLowerInvariant();
+		var adminLike = distinct.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase)) ||
+		                rid == 8 ||
+		                rk == "admin";
+		var sdaoLike = distinct.Any(r => string.Equals(r, "SDAO Staff", StringComparison.OrdinalIgnoreCase)) ||
+		               rid == 7 ||
+		               rk == "sdao_staff";
+
+		if (adminLike || sdaoLike)
+		{
+			distinct.Add("SDAO Assistant");
+			distinct.Add("SDAO Coordinator");
+		}
+
+		return distinct
+			.Where(r => !string.IsNullOrWhiteSpace(r))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+	}
+
+	private static void AddWorkflowHintsFromRoleKey(string? roleKey, List<string> roles)
+	{
+		if (string.IsNullOrWhiteSpace(roleKey))
+		{
+			return;
+		}
+
+		switch (roleKey.Trim().ToLowerInvariant())
+		{
+			case "adviser":
+			case "advisor":
+				roles.Add("Adviser");
+				return;
+			case "program_chair":
+				roles.Add("Program Chair");
+				return;
+			case "dean":
+				roles.Add("Dean");
+				return;
+			case "academic_director":
+				roles.Add("Academic Director");
+				return;
+			case "executive_director":
+				roles.Add("Executive Director");
+				return;
+			case "sdao_staff":
+				roles.Add("SDAO Staff");
+				return;
+			case "admin":
+				roles.Add("Admin");
+				return;
+			case "rso_president":
+				roles.Add("RSO President");
+				return;
+			case "student":
+				roles.Add("Student");
+				return;
+		}
+	}
+
 	/// <summary>
 	/// Sets <see cref="Proposal.CanEdit"/> and <see cref="Proposal.CanApprove"/> from the current user, role, and stage.
 	/// </summary>
@@ -52,7 +139,17 @@ public static class ApprovalRules
 			return;
 		}
 
-		var effectiveRoles = ResolveEffectiveApproverRoles(user);
+		// Laravel may send values other than "approver"; blocking unknown strings incorrectly hid Passed/Revision.
+		// Only exclude accounts explicitly tagged as students / submitters without workflow duties.
+		if (!string.IsNullOrWhiteSpace(user.EffectiveRoleType) &&
+		    IsEffectiveRoleTypeExplicitNonApprover(user.EffectiveRoleType))
+		{
+			proposal.CanEdit = false;
+			proposal.CanApprove = false;
+			return;
+		}
+
+		var effectiveRoles = GetReviewerRoleHints(user);
 		var stages = ProposalWorkflowService.GetStages(proposal.ApprovalFlowType);
 		var isSignatoryForThisProposal = stages.Any(stage =>
 			effectiveRoles.Any(role => ProposalWorkflowService.IsEquivalentRole(stage, role)));
@@ -64,41 +161,29 @@ public static class ApprovalRules
 			return;
 		}
 
+		// Preserve Laravel policy output when present — mobile stage strings can be missing
+		// (e.g. only current_approval_step in extra) or renamed vs the local workflow list, which
+		// would incorrectly hide Passed/Revision for a user who already has the proposal in their queue.
+		var serverCanApprove = proposal.CanApprove;
+
 		var atTheirStage = effectiveRoles.Any(role =>
 			ProposalWorkflowService.IsEquivalentRole(proposal.CurrentStage, role));
-		var canActAsReviewer = atTheirStage && IsActionableStatus(proposal.Status);
+		var actionable = IsActionableStatus(proposal.Status);
+		var canActAsReviewer = (atTheirStage && actionable) ||
+		                       (serverCanApprove && actionable);
 
 		proposal.CanEdit = canActAsReviewer;
 		proposal.CanApprove = canActAsReviewer;
 	}
 
-	private static IReadOnlyList<string> ResolveEffectiveApproverRoles(User user)
+	private static bool IsEffectiveRoleTypeExplicitNonApprover(string raw)
 	{
-		var roles = new List<string>();
-		if (!string.IsNullOrWhiteSpace(user.Role))
-		{
-			roles.Add(user.Role);
-		}
+		var t = raw.Trim().ToLowerInvariant()
+			.Replace("_", string.Empty, StringComparison.Ordinal)
+			.Replace("-", string.Empty, StringComparison.Ordinal)
+			.Replace(" ", string.Empty, StringComparison.Ordinal);
 
-		// Final mobile scope: Admin account can handle both SDAO Assistant and
-		// SDAO Coordinator stages.
-		if (string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase))
-		{
-			roles.Add("SDAO Assistant");
-			roles.Add("SDAO Coordinator");
-		}
-
-		// Backward compatibility with existing "SDAO Staff" role naming.
-		if (string.Equals(user.Role, "SDAO Staff", StringComparison.OrdinalIgnoreCase))
-		{
-			roles.Add("SDAO Assistant");
-			roles.Add("SDAO Coordinator");
-		}
-
-		return roles
-			.Where(r => !string.IsNullOrWhiteSpace(r))
-			.Distinct(StringComparer.OrdinalIgnoreCase)
-			.ToList();
+		return t is "student" or "submitteronly" or "submitter";
 	}
 
 	/// <summary>Uses flags set by the API or <see cref="ApplyWorkflowPermissions"/>.</summary>
@@ -131,8 +216,20 @@ public static class ApprovalRules
 			return false;
 		}
 
-		return string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(status, "Under Review", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(status, "Submitted", StringComparison.OrdinalIgnoreCase);
+		var normalized = Proposal.NormalizeStatus(status);
+		if (string.Equals(normalized, "Pending", StringComparison.OrdinalIgnoreCase) ||
+		    string.Equals(normalized, "Under Review", StringComparison.OrdinalIgnoreCase) ||
+		    string.Equals(normalized, "Submitted", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		// Some APIs still emit non-canonical review labels; treat these as actionable.
+		var key = status.Trim().ToLowerInvariant()
+			.Replace("_", string.Empty, StringComparison.Ordinal)
+			.Replace("-", string.Empty, StringComparison.Ordinal)
+			.Replace(" ", string.Empty, StringComparison.Ordinal);
+
+		return key is "pendingreview" or "forreview" or "inreview" or "onreview" or "review";
 	}
 }

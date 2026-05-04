@@ -11,6 +11,7 @@ using docusystem.Services;
 public partial class ProposalDetailsPage : ContentPage
 {
 	private readonly AppSessionService _session;
+	private readonly IAuthService _authService;
 	private readonly IProposalService _proposalService;
 	private readonly IApprovalService _approvalService;
 	private readonly IRevisionService _revisionService;
@@ -24,6 +25,7 @@ public partial class ProposalDetailsPage : ContentPage
 	private CancellationTokenSource? _fieldReviewAutoSaveCts;
 	private bool _fieldReviewAutoSaveInFlight;
 	private bool _showFieldReviewControls;
+	private bool _canInteractFieldReviewControls;
 
 	// Workflow stage selected in the horizontal track
 	private int _selectedStepIndex;
@@ -41,6 +43,7 @@ public partial class ProposalDetailsPage : ContentPage
 
 	public ProposalDetailsPage(
 		AppSessionService session,
+		IAuthService authService,
 		IProposalService proposalService,
 		IApprovalService approvalService,
 		IRevisionService revisionService,
@@ -48,6 +51,7 @@ public partial class ProposalDetailsPage : ContentPage
 	{
 		InitializeComponent();
 		_session = session;
+		_authService = authService;
 		_proposalService = proposalService;
 		_approvalService = approvalService;
 		_revisionService = revisionService;
@@ -66,7 +70,19 @@ public partial class ProposalDetailsPage : ContentPage
 
 	private async Task LoadAsync()
 	{
-		_proposal = _session.SelectedProposal;
+		// Refresh `/api/user` so role_id matches Laravel auth before Passed/Revision / approve logic.
+		// Cold-start restores JSON from SecureStorage without hitting AuthService normalization merges.
+		try
+		{
+			await _authService.GetCurrentUserAsync().ConfigureAwait(true);
+		}
+		catch (Exception)
+		{
+			// Offline — continue with cached session user.
+		}
+
+		var selectedSnapshot = _session.SelectedProposal;
+		_proposal = selectedSnapshot;
 		if (_proposal is null)
 		{
 			await DisplayAlertAsync(
@@ -80,11 +96,27 @@ public partial class ProposalDetailsPage : ContentPage
 		var refreshed = await _proposalService.GetProposalByIdAsync(_proposal.Id);
 		if (refreshed is not null)
 		{
+			// Pending list payload often carries the most accurate current-stage label for the
+			// logged-in reviewer. Some detail responses return only numeric current step (e.g. 1),
+			// which can temporarily hide/disable Passed/Revision buttons on mobile.
+			if (selectedSnapshot is not null)
+			{
+				if (string.IsNullOrWhiteSpace(refreshed.CurrentStage) || IsNumericStageToken(refreshed.CurrentStage))
+				{
+					refreshed.CurrentStage = selectedSnapshot.CurrentStage;
+				}
+
+				if (string.IsNullOrWhiteSpace(refreshed.Status))
+				{
+					refreshed.Status = selectedSnapshot.Status;
+				}
+			}
+
 			_proposal = refreshed;
 			_session.SetSelectedProposal(refreshed);
 		}
 
-		// Recompute flow from real payload wording (Curricular / Non-curricular)
+		// Recompute flow from real payload wording (Co-curricular / Non-curricular)
 		// so stage routing matches backend proposal type.
 		_proposal.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(_proposal);
 
@@ -189,6 +221,16 @@ public partial class ProposalDetailsPage : ContentPage
 	private static bool IsAbsoluteUrl(string? url) =>
 		!string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out _);
 
+	private static bool IsNumericStageToken(string? value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return false;
+		}
+
+		return int.TryParse(value.Trim(), out _);
+	}
+
 	private static string FormatFileType(string fileType)
 	{
 		var trimmed = fileType.Replace('_', ' ').Trim();
@@ -252,8 +294,40 @@ public partial class ProposalDetailsPage : ContentPage
 
 		ApprovalRules.ApplyWorkflowPermissions(_proposal, user);
 		var canApprove = !isFullyApproved && ApprovalRules.CanApprove(user, _proposal);
-		_showFieldReviewControls = canApprove;
-		SubmitFieldReviewBtn.IsVisible = canApprove;
+		var isSignatory = IsAnySignatoryForProposal(user, _proposal);
+
+		// Mobile fail-safe: detail payload sometimes ships without a fully expanded current_step
+		// object. If the user is part of the signatory chain, the proposal's current stage matches
+		// their role, and status is still actionable, allow interaction. Backend remains the final
+		// authority via 403 if the workflow step truly isn't theirs.
+		if (!canApprove &&
+		    !isFullyApproved &&
+		    !IsRsoPresident(user) &&
+		    isSignatory &&
+		    !string.IsNullOrWhiteSpace(_proposal.CurrentStage) &&
+		    IsActionableWorkflowStatus(_proposal.Status) &&
+		    DoesUserMatchCurrentStage(user, _proposal))
+		{
+			canApprove = true;
+		}
+
+		// Laravel sometimes emits status values like "approved" (→ Approved) while the proposal is still
+		// routed at an intermediate signatory — CurrentStage / synthetic steps already show whose turn it is.
+		// Without this, Passed/Revision stay disabled despite correct Stage / Current Approver labels.
+		if (!canApprove &&
+		    !isFullyApproved &&
+		    !IsReturned() &&
+		    !IsProposalRejectedForWorkflow() &&
+		    !IsRsoPresident(user) &&
+		    isSignatory &&
+		    WorkflowCurrentStepMatchesReviewer(user))
+		{
+			canApprove = true;
+		}
+
+		_showFieldReviewControls = !isFullyApproved && isSignatory;
+		_canInteractFieldReviewControls = canApprove;
+		SubmitFieldReviewBtn.IsVisible = _canInteractFieldReviewControls;
 		UpdateSubmitButtonState();
 	}
 
@@ -376,7 +450,7 @@ public partial class ProposalDetailsPage : ContentPage
 		var explicitNature = GetExtraStringAny(ext, "nature_of_activity", "nature", "activity_nature");
 		var natureOfActivity = !string.IsNullOrWhiteSpace(explicitNature)
 			? explicitNature
-			: (p.ApprovalFlowType == ApprovalFlowType.Academic ? "Curricular" : "Non-curricular");
+			: (p.ApprovalFlowType == ApprovalFlowType.Academic ? "Co-curricular" : "Non-curricular");
 		var typeOfActivity = FirstNonEmpty(
 			GetExtraStringAny(ext, "activity_types", "activity_type", "type_of_activity", "activity_kind", "type", "category"),
 			"—");
@@ -1096,15 +1170,25 @@ public partial class ProposalDetailsPage : ContentPage
 		Grid.SetColumn(labelStack, 0);
 
 		topRow.Children.Add(labelStack);
-		if (_showFieldReviewControls)
+		if (_showFieldReviewControls && field.IsReviewable)
 		{
 			// Passed button
-			var passedBtn = CreateReviewButton("Passed", index, isPassed: true, field.State == FieldReviewState.Passed);
+			var passedBtn = CreateReviewButton(
+				"Passed",
+				index,
+				isPassed: true,
+				field.State == FieldReviewState.Passed,
+				isEnabled: _canInteractFieldReviewControls);
 			Grid.SetColumn(passedBtn, 1);
 			topRow.Children.Add(passedBtn);
 
 			// Revision button
-			var revisionBtn = CreateReviewButton("Revision", index, isPassed: false, field.State == FieldReviewState.Revision);
+			var revisionBtn = CreateReviewButton(
+				"Revision",
+				index,
+				isPassed: false,
+				field.State == FieldReviewState.Revision,
+				isEnabled: _canInteractFieldReviewControls);
 			Grid.SetColumn(revisionBtn, 2);
 			topRow.Children.Add(revisionBtn);
 		}
@@ -1114,7 +1198,7 @@ public partial class ProposalDetailsPage : ContentPage
 		var revisionNoteSection = new VerticalStackLayout
 		{
 			Spacing = 4,
-			IsVisible = _showFieldReviewControls && field.RevisionInputVisible
+			IsVisible = _canInteractFieldReviewControls && field.IsReviewable && field.RevisionInputVisible
 		};
 
 		var noteEntry = new Editor
@@ -1168,7 +1252,7 @@ public partial class ProposalDetailsPage : ContentPage
 		return cardBorder;
 	}
 
-	private Border CreateReviewButton(string text, int fieldIndex, bool isPassed, bool isActive)
+	private Border CreateReviewButton(string text, int fieldIndex, bool isPassed, bool isActive, bool isEnabled)
 	{
 		var activeColor = isPassed ? PassedBorder : RevisionBorder;
 		var activeText = isPassed ? PassedText : RevisionText;
@@ -1191,18 +1275,27 @@ public partial class ProposalDetailsPage : ContentPage
 			Stroke = isActive ? activeColor : PendingBorder,
 			Padding = new Thickness(10, 5),
 			Content = label,
-			MinimumWidthRequest = 64
+			MinimumWidthRequest = 64,
+			Opacity = isEnabled ? 1.0 : 0.55
 		};
 
-		var tapGesture = new TapGestureRecognizer();
-		tapGesture.Tapped += (_, _) => OnFieldReviewButtonTapped(fieldIndex, isPassed);
-		btn.GestureRecognizers.Add(tapGesture);
+		if (isEnabled)
+		{
+			var tapGesture = new TapGestureRecognizer();
+			tapGesture.Tapped += (_, _) => OnFieldReviewButtonTapped(fieldIndex, isPassed);
+			btn.GestureRecognizers.Add(tapGesture);
+		}
 
 		return btn;
 	}
 
 	private void OnFieldReviewButtonTapped(int index, bool isPassed)
 	{
+		if (!_canInteractFieldReviewControls)
+		{
+			return;
+		}
+
 		var field = _fields[index];
 
 		if (isPassed)
@@ -1238,6 +1331,15 @@ public partial class ProposalDetailsPage : ContentPage
 			return;
 		}
 
+		if (!_canInteractFieldReviewControls)
+		{
+			SubmitFieldReviewBtn.IsEnabled = false;
+			SubmitFieldReviewBtn.Opacity = 0.55;
+			SubmitFieldReviewHintLabel.Text = "It's not your turn to approve this proposal yet.";
+			SubmitFieldReviewHintLabel.IsVisible = true;
+			return;
+		}
+
 		var hasAnyFields = _fields.Count > 0;
 		var undecidedCount = _fields.Count(f => f.State == FieldReviewState.Pending);
 		var revisionMissingNoteCount = _fields.Count(f =>
@@ -1258,6 +1360,44 @@ public partial class ProposalDetailsPage : ContentPage
 		SubmitFieldReviewHintLabel.Text = revisionMissingNoteCount > 0
 			? "Please add revision notes for all fields marked as Revision before submitting."
 			: "Please complete all field review decisions before submitting.";
+	}
+
+	private static bool IsAnySignatoryForProposal(User? user, Proposal? proposal)
+	{
+		if (user is null || proposal is null)
+		{
+			return false;
+		}
+
+		var hints = ApprovalRules.GetReviewerRoleHints(user);
+		var stages = ProposalWorkflowService.GetStages(proposal.ApprovalFlowType);
+		return hints.Any(h => stages.Any(s => ProposalWorkflowService.IsEquivalentRole(s, h)));
+	}
+
+	private static bool DoesUserMatchCurrentStage(User? user, Proposal proposal)
+	{
+		if (user is null)
+		{
+			return false;
+		}
+
+		var hints = ApprovalRules.GetReviewerRoleHints(user);
+		return hints.Any(h => ProposalWorkflowService.IsEquivalentRole(proposal.CurrentStage, h));
+	}
+
+	private static bool IsRsoPresident(User? user) =>
+		user is not null &&
+		(string.Equals(user.Role, "RSO President", StringComparison.OrdinalIgnoreCase) ||
+		 string.Equals(user.Role, "Organization Officer", StringComparison.OrdinalIgnoreCase) ||
+		 string.Equals(user.RoleKey, "rso_president", StringComparison.OrdinalIgnoreCase) ||
+		 string.Equals(user.RoleKey, "org_officer", StringComparison.OrdinalIgnoreCase));
+
+	private static bool IsActionableWorkflowStatus(string? status)
+	{
+		var normalized = Proposal.NormalizeStatus(status);
+		return string.Equals(normalized, "Pending", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(normalized, "Under Review", StringComparison.OrdinalIgnoreCase) ||
+		       string.Equals(normalized, "Submitted", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private bool IsAllStepsPassed() => StepAllPassed("step1") && StepAllPassed("step2");
@@ -1420,7 +1560,13 @@ public partial class ProposalDetailsPage : ContentPage
 		// stageNames[1..] = signatory stages mapped from _steps[0..].
 		// _selectedStepIndex is 0-based into _steps; add 1 to get display index.
 		var stageNames = new[] { "Submitted" }.Concat(signatoryNames).ToArray();
-		var displaySelectedIndex = _selectedStepIndex + 1; // +1 because Submitted is at index 0
+		var currentStepIndex = FindCurrentStepIndex();
+		var displayCurrentIndex = currentStepIndex + 1; // +1 because Submitted is at index 0
+
+		// Keep the selected stage pinned to the currently assigned signatory.
+		// This prevents opening other stages as editable/interactive from the track.
+		_selectedStepIndex = currentStepIndex;
+		var displaySelectedIndex = displayCurrentIndex;
 
 		for (var i = 0; i < stageNames.Length; i++)
 		{
@@ -1431,6 +1577,7 @@ public partial class ProposalDetailsPage : ContentPage
 			var step = (stepIdx >= 0 && stepIdx < _steps.Count) ? _steps[stepIdx] : null;
 			var isCurrent = i == displaySelectedIndex;
 			var isCompleted = i == 0 || step?.Status == "Completed";
+			var isInteractive = stepIdx >= 0 && i == displayCurrentIndex;
 			var isCaptured = i; // capture for lambda
 
 			// Node circle
@@ -1455,18 +1602,22 @@ public partial class ProposalDetailsPage : ContentPage
 				BackgroundColor = isCompleted ? Color.FromArgb("#3CB371") : Colors.White,
 				Stroke = isCompleted ? Color.FromArgb("#2AA060") : isCurrent ? PrimaryColor : Color.FromArgb("#C0C8D8"),
 				HorizontalOptions = LayoutOptions.Center,
-				Content = circleContent
+				Content = circleContent,
+				Opacity = isInteractive ? 1 : 0.9
 			};
 
-			var tap = new TapGestureRecognizer();
-			tap.Tapped += (_, _) =>
+			if (isInteractive)
 			{
-				// Map display index back to _steps index (subtract 1 for Submitted node).
-				_selectedStepIndex = Math.Max(0, isCaptured - 1);
-				BuildWorkflowTrack();
-				BindSelectedStageCard();
-			};
-			circleBorder.GestureRecognizers.Add(tap);
+				var tap = new TapGestureRecognizer();
+				tap.Tapped += (_, _) =>
+				{
+					// Map display index back to _steps index (subtract 1 for Submitted node).
+					_selectedStepIndex = Math.Max(0, isCaptured - 1);
+					BuildWorkflowTrack();
+					BindSelectedStageCard();
+				};
+				circleBorder.GestureRecognizers.Add(tap);
+			}
 
 			var stageLabel = new Label
 			{
@@ -1476,7 +1627,8 @@ public partial class ProposalDetailsPage : ContentPage
 				FontAttributes = isCurrent ? FontAttributes.Bold : FontAttributes.None,
 				HorizontalTextAlignment = TextAlignment.Center,
 				MaximumWidthRequest = 60,
-				LineBreakMode = LineBreakMode.WordWrap
+				LineBreakMode = LineBreakMode.WordWrap,
+				Opacity = isInteractive || isCurrent || isCompleted ? 1 : 0.75
 			};
 
 			var nodeStack = new VerticalStackLayout
@@ -1488,7 +1640,10 @@ public partial class ProposalDetailsPage : ContentPage
 			nodeStack.Children.Add(circleBorder);
 			nodeStack.Children.Add(stageLabel);
 
-			nodeStack.GestureRecognizers.Add(tap);
+			if (isInteractive && circleBorder.GestureRecognizers.Count > 0)
+			{
+				nodeStack.GestureRecognizers.Add(circleBorder.GestureRecognizers[0]);
+			}
 
 			WorkflowTrackStack.Children.Add(nodeStack);
 
@@ -1733,7 +1888,7 @@ public partial class ProposalDetailsPage : ContentPage
 
 			changes.Add(new FieldChange
 			{
-				FieldKey = ToFieldKey(field.Label),
+				FieldKey = MakeStableFieldKey(field.StepKey, field.Label),
 				FieldLabel = field.Label,
 				Status = status,
 				Comment = string.IsNullOrWhiteSpace(note) ? null : note
@@ -1741,6 +1896,16 @@ public partial class ProposalDetailsPage : ContentPage
 		}
 
 		return changes;
+	}
+
+	/// <summary>
+	/// Stable API keys must be unique per proposal batch. Labels repeat across steps (e.g. two "Venue"
+	/// rows) — Postgres UPSERT fails if two rows share the same conflict target (<c>field_key</c>).
+	/// </summary>
+	private static string MakeStableFieldKey(string stepKey, string label)
+	{
+		var step = string.IsNullOrWhiteSpace(stepKey) ? "step1" : stepKey.Trim().ToLowerInvariant();
+		return $"{step}_{ToFieldKey(label)}";
 	}
 
 	private static string ToFieldKey(string label)
@@ -1896,16 +2061,6 @@ public partial class ProposalDetailsPage : ContentPage
 		await Shell.Current.GoToAsync("//pendingapprovals");
 	}
 
-	private async void OnOpenProposalHistoryClicked(object? sender, EventArgs e)
-	{
-		if (_proposal is not null)
-		{
-			_session.SetSelectedProposal(_proposal);
-		}
-
-		await Shell.Current.GoToAsync("//revisionhistory");
-	}
-
 	// ──────────────────────────────────────────────────────────────────────────
 	// Helpers
 	// ──────────────────────────────────────────────────────────────────────────
@@ -1916,6 +2071,38 @@ public partial class ProposalDetailsPage : ContentPage
 	private bool IsReturned() =>
 		string.Equals(_proposal?.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase);
 
+	private bool IsProposalRejectedForWorkflow()
+	{
+		if (_proposal is null)
+		{
+			return false;
+		}
+
+		var n = Proposal.NormalizeStatus(_proposal.Status);
+		return string.Equals(n, "Rejected", StringComparison.OrdinalIgnoreCase);
+	}
+
+	/// <summary>
+	/// True when locally built workflow marks an explicit current step and it matches this reviewer.
+	/// Used when API <see cref="Proposal.Status"/> is not one of our actionable labels but routing is active.
+	/// </summary>
+	private bool WorkflowCurrentStepMatchesReviewer(User? user)
+	{
+		if (user is null || _proposal is null || _steps.Count == 0)
+		{
+			return false;
+		}
+
+		var current = _steps.FirstOrDefault(s => s.IsCurrentStep);
+		if (current is null || string.IsNullOrWhiteSpace(current.RoleName))
+		{
+			return false;
+		}
+
+		var hints = ApprovalRules.GetReviewerRoleHints(user);
+		return hints.Any(h => ProposalWorkflowService.IsEquivalentRole(current.RoleName, h));
+	}
+
 	private int FindCurrentStepIndex()
 	{
 		if (_proposal is null || _steps.Count == 0)
@@ -1925,7 +2112,15 @@ public partial class ProposalDetailsPage : ContentPage
 
 		for (var i = 0; i < _steps.Count; i++)
 		{
-			if (string.Equals(_steps[i].RoleName, _proposal.CurrentStage, StringComparison.OrdinalIgnoreCase))
+			if (_steps[i].IsCurrentStep)
+			{
+				return i;
+			}
+		}
+
+		for (var i = 0; i < _steps.Count; i++)
+		{
+			if (ProposalWorkflowService.IsEquivalentRole(_steps[i].RoleName, _proposal.CurrentStage))
 			{
 				return i;
 			}

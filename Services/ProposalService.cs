@@ -78,6 +78,8 @@ public sealed class ProposalService : IProposalService
 			return [];
 		}
 
+		var isRsoTracking = IsRsoTrackingRole(_session.CurrentUser);
+
 		if (IsSupabaseBackend())
 		{
 			// Supabase mode currently uses a flat proposals table; fallback to the same list.
@@ -144,7 +146,10 @@ public sealed class ProposalService : IProposalService
 
 				// Keep collecting from dedicated routes instead of returning early.
 				// Some backends split by status and one endpoint may omit approved/archived records.
-				AddDistinct(merged, seenIds, parsed);
+				var scoped = isRsoTracking
+					? parsed.Where(p => IsOwnedByCurrentUser(p, _session.CurrentUser)).ToList()
+					: parsed;
+				AddDistinct(merged, seenIds, scoped);
 			}
 
 			if (merged.Count > 0)
@@ -154,11 +159,9 @@ public sealed class ProposalService : IProposalService
 					.ToList();
 			}
 
-			// Last fallback for RSO tracking lane: many backends already scope `api/proposals`
-			// to the authenticated user. If our ownership heuristics are too strict and
-			// filtered everything out, return that scoped list so the user still sees
-			// their submissions.
-			if (IsRsoTrackingRole(_session.CurrentUser) && broadFallbackParsed is { Count: > 0 })
+			// Last fallback for non-RSO callers only.
+			// RSO tracking must remain strict owner-only to avoid showing other submissions.
+			if (!isRsoTracking && broadFallbackParsed is { Count: > 0 })
 			{
 				return broadFallbackParsed
 					.OrderByDescending(p => p.SubmittedDate)
@@ -350,10 +353,29 @@ public sealed class ProposalService : IProposalService
 			// the backend may use for status changes when /resubmit is not implemented.
 			var attempts = new (HttpMethod Method, string Path, object? Body)[]
 			{
-				(HttpMethod.Post, $"api/proposals/{proposalId}/resubmit", new { }),
-				(HttpMethod.Post, $"api/proposals/{proposalId}/resubmit", new { status = "pending" }),
-				(HttpMethod.Patch, $"api/proposals/{proposalId}", new { status = "pending" }),
-				(HttpMethod.Put, $"api/proposals/{proposalId}", new { status = "pending" })
+				(HttpMethod.Post, $"api/proposals/{proposalId}/resubmit", new
+				{
+					action_source = "mobile",
+					action_timestamp = DateTime.UtcNow
+				}),
+				(HttpMethod.Post, $"api/proposals/{proposalId}/resubmit", new
+				{
+					status = "pending",
+					action_source = "mobile",
+					action_timestamp = DateTime.UtcNow
+				}),
+				(HttpMethod.Patch, $"api/proposals/{proposalId}", new
+				{
+					status = "pending",
+					action_source = "mobile",
+					action_timestamp = DateTime.UtcNow
+				}),
+				(HttpMethod.Put, $"api/proposals/{proposalId}", new
+				{
+					status = "pending",
+					action_source = "mobile",
+					action_timestamp = DateTime.UtcNow
+				})
 			};
 
 			HttpResponseMessage? lastResponse = null;

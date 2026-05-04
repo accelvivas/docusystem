@@ -8,6 +8,7 @@ public class ProposalFieldReview
 	public string Label { get; set; } = string.Empty;
 	public string Value { get; set; } = string.Empty;
 	public string StepKey { get; set; } = "step1";
+	public bool IsReviewable { get; set; } = true;
 	public bool IsFile { get; set; }
 	public ProposalAttachment? Attachment { get; set; }
 	public List<BudgetTableRow> BudgetRows { get; set; } = [];

@@ -90,6 +90,19 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 			? (await _proposalService.GetMySubmissionsAsync()).ToList()
 			: (await _proposalService.GetPendingApprovalsAsync()).ToList();
 
+		// Final scope: non-RSO users should only see proposals currently assigned to them.
+		// This client-side gate protects UX even if backend pending endpoint is temporarily broad.
+		if (!_isTrackingOnlyMode)
+		{
+			proposals = proposals
+				.Where(p =>
+				{
+					ApprovalRules.ApplyWorkflowPermissions(p, currentUser);
+					return ApprovalRules.CanApprove(currentUser, p);
+				})
+				.ToList();
+		}
+
 		_allProposals = proposals
 			.OrderByDescending(p => string.Equals(p.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase))
 			.ThenByDescending(p => p.SubmittedDate)
@@ -181,7 +194,9 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 	{
 		var (statusText, statusBg, statusFg, statusBorder) = GetStatusVisuals(proposal.Status);
 		var timingValue = GetPendingForDays(proposal);
-		var timingLabel = "PENDING FOR";
+		var timingLabel = _isTrackingOnlyMode ? "TRACKING FOR" : "PENDING FOR";
+		var currentHolder = string.IsNullOrWhiteSpace(proposal.CurrentStage) ? "—" : proposal.CurrentStage;
+		var progressText = BuildProgressLine(proposal);
 
 		var card = new Border
 		{
@@ -219,6 +234,14 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 							BuildBadge("STATUS", statusText, statusBg, statusFg, statusBorder).Assign(gridColumn: 1)
 						}
 					},
+					BuildInfoLine("CURRENT SIGNATORY", currentHolder),
+					new Label
+					{
+						Text = progressText,
+						FontSize = 11,
+						TextColor = Ui.NavyMutedText,
+						LineBreakMode = LineBreakMode.WordWrap
+					},
 					BuildInfoLine(timingLabel, timingValue),
 					new Grid
 					{
@@ -236,7 +259,7 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 							}.Assign(gridColumn: 0),
 							new Button
 							{
-								Text = _isTrackingOnlyMode ? "View Status" : "View / Review",
+								Text = _isTrackingOnlyMode ? "Track Progress" : "View / Review",
 								FontSize = 12,
 								FontAttributes = FontAttributes.Bold,
 								TextColor = Ui.Navy,
@@ -341,6 +364,23 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 		return days == 1 ? "1 day" : $"{days} days";
 	}
 
+	private static string BuildProgressLine(Proposal proposal)
+	{
+		if (string.IsNullOrWhiteSpace(proposal.CurrentStage))
+		{
+			return "Progress: Current stage is not available yet.";
+		}
+
+		var stages = ProposalWorkflowService.GetStages(proposal.ApprovalFlowType);
+		var index = ProposalWorkflowService.IndexOfStage(proposal.CurrentStage, proposal.ApprovalFlowType);
+		if (index < 0 || stages.Count == 0)
+		{
+			return $"Progress: Currently with {proposal.CurrentStage}.";
+		}
+
+		return $"Progress: Stage {index + 1} of {stages.Count} ({proposal.CurrentStage}).";
+	}
+
 	private static (string Text, Color Bg, Color Fg, Color Border) GetStatusVisuals(string status)
 	{
 		var s = (status ?? string.Empty).Trim();
@@ -401,6 +441,9 @@ public partial class PendingApprovalsPage : ContentPage, IQueryAttributable
 	/// <summary>Loads the latest proposal snapshot, stores it in session, and opens contextual details page.</summary>
 	private async Task OpenProposalDetailsAsync(Proposal proposal)
 	{
+		// Permission gating happens during list load (LoadProposalsAsync) and inside the
+		// details page (Passed/Revision controls toggle by stage). Avoid double-blocking on
+		// tap; if the backend later disagrees, the action call returns a clear 403 message.
 		_session.SetSelectedProposal(proposal);
 		var refreshed = await _proposalService.GetProposalByIdAsync(proposal.Id);
 		if (refreshed is not null)

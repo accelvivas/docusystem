@@ -1,10 +1,10 @@
-<api type="debug" assembly-name="docusystem" mvid="d307b8515400418db7ee7fb814b188b0">
+<api type="debug" assembly-name="docusystem" mvid="32b9aa25f51c4796a766e89d4418838f">
   <java-to-managed>
-    <entry java-name="crc649c60a694cc9c8387/MainActivity" managed-name="docusystem.MainActivity, docusystem" managed-type-token-id="33554447" />
-    <entry java-name="crc649c60a694cc9c8387/MainApplication" managed-name="docusystem.MainApplication, docusystem" managed-type-token-id="33554448" />
+    <entry java-name="crc649c60a694cc9c8387/MainActivity" managed-name="docusystem.MainActivity, docusystem" managed-type-token-id="33554448" />
+    <entry java-name="crc649c60a694cc9c8387/MainApplication" managed-name="docusystem.MainApplication, docusystem" managed-type-token-id="33554449" />
   </java-to-managed>
   <managed-to-java>
-    <entry java-name="crc649c60a694cc9c8387/MainActivity" managed-name="docusystem.MainActivity, docusystem" managed-type-token-id="33554447" />
-    <entry java-name="crc649c60a694cc9c8387/MainApplication" managed-name="docusystem.MainApplication, docusystem" managed-type-token-id="33554448" />
+    <entry java-name="crc649c60a694cc9c8387/MainActivity" managed-name="docusystem.MainActivity, docusystem" managed-type-token-id="33554448" />
+    <entry java-name="crc649c60a694cc9c8387/MainApplication" managed-name="docusystem.MainApplication, docusystem" managed-type-token-id="33554449" />
   </managed-to-java>
 </api>
