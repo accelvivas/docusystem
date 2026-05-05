@@ -265,9 +265,9 @@ public partial class NotificationsPage : ContentPage
 	{
 		// Mark as read first so notification UX still works even when the payload has
 		// no proposal_id (current web API often returns title/message/type/link_url only).
-		if (!notification.IsRead && notification.Id > 0)
+		if (!notification.IsRead && !string.IsNullOrWhiteSpace(notification.RouteKeyForApi))
 		{
-			_ = _notificationService.MarkAsReadAsync(notification.Id);
+			_ = _notificationService.MarkAsReadAsync(notification.RouteKeyForApi);
 			notification.ReadAt = DateTime.UtcNow;
 			notification.IsReadFlag = true;
 			ApplyFilter();

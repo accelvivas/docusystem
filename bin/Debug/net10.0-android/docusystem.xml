@@ -36,6 +36,12 @@
             Supports both old and new Laravel payload shapes.
             </summary>
         </member>
+        <member name="P:docusystem.Models.NotificationItem.StringId">
+            <summary>Laravel may use UUID strings for notification ids instead of integers.</summary>
+        </member>
+        <member name="P:docusystem.Models.NotificationItem.RouteKeyForApi">
+            <summary>Value for PATCH <c>/api/notifications/{id}/read</c> — prefers <see cref="P:docusystem.Models.NotificationItem.StringId"/> then numeric <see cref="P:docusystem.Models.NotificationItem.Id"/>.</summary>
+        </member>
         <member name="P:docusystem.Models.NotificationItem.DisplayProposalTitle">
             <summary>Empty when the API did not send proposal title fields (Laravel index only sends title/message/type/link).</summary>
         </member>
@@ -150,12 +156,12 @@
         </member>
         <member name="T:docusystem.Models.RoleIdCatalog">
             <summary>
-            Default rows for <c>roles</c> (id, name, display_name) when the API only returns <c>role_id</c> or a role row with <c>id</c> and no <c>name</c> yet.
-            Aligned with Laravel/Postgres seeds: <c>rso_president</c> … <c>admin</c>, <c>student</c>.
+            Fallback when the API sends <c>role_id</c> without a full nested <c>role</c> row.
+            Keep aligned with your <c>roles</c> seed (Supabase/Laravel).
             </summary>
         </member>
         <member name="M:docusystem.Models.RoleIdCatalog.TryGetDisplayName(System.Int32,System.String@)">
-            <summary>Matches typical <c>roles.id</c> / <c>users.role_id</c> (1…9).</summary>
+            <summary>Matches <c>roles.id</c> / <c>users.role_id</c> (1…10).</summary>
         </member>
         <member name="T:docusystem.Models.Supabase.ProposalRow">
             <summary>Maps to Postgres table (default <c>proposals</c>). Rename <see cref="T:Supabase.Postgrest.Attributes.TableAttribute"/> if your schema differs.</summary>
@@ -250,6 +256,11 @@
             <summary>
             Stable API keys must be unique per proposal batch. Labels repeat across steps (e.g. two "Venue"
             rows) — Postgres UPSERT fails if two rows share the same conflict target (<c>field_key</c>).
+            </summary>
+        </member>
+        <member name="M:docusystem.Pages.Approvals.ProposalDetailsPage.IsCurrentStageLastInWorkflow(docusystem.Models.Proposal)">
+            <summary>
+            True when <see cref="P:docusystem.Models.Proposal.CurrentStage"/> matches the final signatory for this proposal's flow (Executive Director).
             </summary>
         </member>
         <member name="M:docusystem.Pages.Approvals.ProposalDetailsPage.WorkflowCurrentStepMatchesReviewer(docusystem.Models.User)">
@@ -379,8 +390,14 @@
         <member name="T:docusystem.Services.ApprovalService">
             <summary>Approval workflow UI and sign-off actions via the Laravel API.</summary>
         </member>
+        <member name="F:docusystem.Services.ApprovalService.WritePayloadOptions">
+            <summary>Snake_case body keys must match Laravel — do not camelCase dictionary keys.</summary>
+        </member>
         <member name="F:docusystem.Services.ApprovalService.ApprovalSequence">
             <summary>Academic chain only — prefer building steps from <see cref="M:docusystem.Services.ApprovalService.BuildApprovalSteps(docusystem.Models.Proposal)"/> per proposal.</summary>
+        </member>
+        <member name="M:docusystem.Services.ApprovalService.ResolveCurrentWorkflowStep(System.Collections.Generic.IReadOnlyList{docusystem.Models.ApprovalStep})">
+            <summary>Picks the server-marked current step, else the earliest step that looks actionable.</summary>
         </member>
         <member name="M:docusystem.Services.ApprovalService.ResolveActionFailureMessage(System.Net.HttpStatusCode,System.String,System.String)">
             <summary>
@@ -521,8 +538,8 @@
         <member name="M:docusystem.Services.INotificationService.GetNotificationsAsync(System.Threading.CancellationToken)">
             <summary>GET notifications (tries <c>api/notifications</c> and common alternates). Laravel scopes to the authenticated user / approver.</summary>
         </member>
-        <member name="M:docusystem.Services.INotificationService.MarkAsReadAsync(System.Int32,System.Threading.CancellationToken)">
-            <summary>PATCH /api/notifications/{id}/read — marks a single notification as read.</summary>
+        <member name="M:docusystem.Services.INotificationService.MarkAsReadAsync(System.String,System.Threading.CancellationToken)">
+            <summary>PATCH /api/notifications/{id}/read — marks a single notification as read (numeric id or UUID string).</summary>
         </member>
         <member name="M:docusystem.Services.INotificationService.MarkAllAsReadAsync(System.Threading.CancellationToken)">
             <summary>PATCH /api/notifications/read-all — marks every notification for the user as read.</summary>
@@ -621,11 +638,13 @@
         <member name="T:docusystem.Services.NotificationService">
             <summary>Notifications from the Laravel API (scoped server-side to the signed-in user / approver).</summary>
         </member>
+        <member name="F:docusystem.Services.NotificationService.NotificationJsonOptions">
+            <summary>
+            Lenient parsing so one odd field does not drop the entire list (common with Laravel Resource variance).
+            </summary>
+        </member>
         <member name="P:docusystem.Services.NotificationService.LastListUnreadCountFromMeta">
             <inheritdoc />
-        </member>
-        <member name="M:docusystem.Services.NotificationService.TryReadMetaUnreadCount(System.String)">
-            <summary>Laravel <c>GET /api/notifications</c> returns <c>meta.unread_count</c> alongside <c>data</c>.</summary>
         </member>
         <member name="T:docusystem.Services.ProposalService">
             <summary>

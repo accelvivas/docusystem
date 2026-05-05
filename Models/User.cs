@@ -96,6 +96,12 @@ public class User
 	{
 		get
 		{
+			// Match GetRoleLabel: trust users.role_id when the catalog knows it (nested name can be wrong).
+			if (ResolvedRoleId is int fk && fk > 0 && RoleIdCatalog.TryGetNameSlug(fk, out var fkSlug))
+			{
+				return fkSlug;
+			}
+
 			if (!string.IsNullOrWhiteSpace(UserRole?.Name))
 			{
 				return UserRole!.Name;
@@ -109,11 +115,6 @@ public class User
 			if (Roles is not null && Roles.Count > 0 && !string.IsNullOrWhiteSpace(Roles[0]?.Name))
 			{
 				return Roles[0]!.Name;
-			}
-
-			if (ResolvedRoleId is int r && r > 0 && RoleIdCatalog.TryGetNameSlug(r, out var slug))
-			{
-				return slug;
 			}
 
 			return FirstNonEmpty(
@@ -148,16 +149,36 @@ public class User
 			return;
 		}
 
-		if (UserRole is not null && UserRole.Id == rid)
+		// Always align labels to catalog for this FK. APIs sometimes return role_id 9 with a stale or wrong
+		// nested role row (e.g. display_name "Student"); the old early-exit when UserRole.Id == rid hid that bug.
+		int? preservedApproval = null;
+		if (UserRole?.Id == rid)
 		{
-			return;
+			preservedApproval = UserRole.ApprovalLevel;
+		}
+		else if (CurrentRole?.Id == rid)
+		{
+			preservedApproval = CurrentRole.ApprovalLevel;
+		}
+		else if (Roles is { Count: > 0 } list)
+		{
+			for (var i = 0; i < list.Count; i++)
+			{
+				var r = list[i];
+				if (r?.Id == rid)
+				{
+					preservedApproval = r.ApprovalLevel;
+					break;
+				}
+			}
 		}
 
 		UserRole = new UserRole
 		{
 			Id = rid,
 			Name = slug,
-			DisplayName = display
+			DisplayName = display,
+			ApprovalLevel = preservedApproval
 		};
 	}
 
@@ -194,6 +215,13 @@ public class User
 
 	private string GetRoleLabel()
 	{
+		// Prefer FK users.role_id when the catalog knows it — beats stale nested JSON and legacy ENUM columns
+		// that still say "student" for approver accounts.
+		if (ResolvedRoleId is int fk && fk > 0 && RoleIdCatalog.TryGetDisplayName(fk, out var fromFk))
+		{
+			return fromFk;
+		}
+
 		// 1) `roles` table: nested `role` or `current_role` { id, name, display_name, approval_level }
 		var primary = UserRole ?? CurrentRole;
 		if (primary is not null)
@@ -229,12 +257,6 @@ public class User
 		if (!string.IsNullOrWhiteSpace(columnSlug))
 		{
 			return MapOrTitleSlug(columnSlug.Trim());
-		}
-
-		// 4) API only sent users.role_id (no nested object)
-		if (ResolvedRoleId is int id && id > 0 && RoleIdCatalog.TryGetDisplayName(id, out var fromCatalog))
-		{
-			return fromCatalog;
 		}
 
 		return string.Empty;
@@ -294,6 +316,7 @@ public class User
 			"academic_director" => "Academic Director",
 			"executive_director" => "Executive Director",
 			"sdao_staff" => "SDAO Staff",
+			"assistant_director" => "Assistant Director",
 			"admin" => "Admin",
 			"student" => "Student",
 			// NULP sdao: users.role_type ENUM

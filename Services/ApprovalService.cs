@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using docusystem.Models;
 
 namespace docusystem.Services;
@@ -12,11 +14,20 @@ public sealed class ApprovalService : IApprovalService
 		PropertyNameCaseInsensitive = true
 	};
 
-	private readonly IHttpClientFactory _httpClientFactory;
+	/// <summary>Snake_case body keys must match Laravel — do not camelCase dictionary keys.</summary>
+	private static readonly JsonSerializerOptions WritePayloadOptions = new()
+	{
+		PropertyNamingPolicy = null,
+		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+	};
 
-	public ApprovalService(IHttpClientFactory httpClientFactory)
+	private readonly IHttpClientFactory _httpClientFactory;
+	private readonly IProposalService _proposalService;
+
+	public ApprovalService(IHttpClientFactory httpClientFactory, IProposalService proposalService)
 	{
 		_httpClientFactory = httpClientFactory;
+		_proposalService = proposalService;
 	}
 
 	/// <summary>Academic chain only — prefer building steps from <see cref="BuildApprovalSteps"/> per proposal.</summary>
@@ -71,18 +82,32 @@ public sealed class ApprovalService : IApprovalService
 		try
 		{
 			var client = _httpClientFactory.CreateClient("LaravelApi");
-			// Controller validates `comments` as nullable; sending empty string keeps the
-			// shape consistent with the web flow.
-			using var response = await client.PostAsJsonAsync(
-				$"api/proposals/{proposalId}/approve",
-				new
-				{
-					comments = string.Empty,
-					action_source = "mobile",
-					action_timestamp = DateTime.UtcNow
-				},
-				JsonOptions,
-				cancellationToken).ConfigureAwait(false);
+
+			// Many backends bind approve to a specific workflow row; web sends step id implicitly.
+			// Without it, POST can succeed while no row advances — web stays on the same signatory.
+			var workflowSteps = await _proposalService.GetProposalWorkflowAsync(proposalId, cancellationToken).ConfigureAwait(false);
+			var currentStep = ResolveCurrentWorkflowStep(workflowSteps);
+
+			var payload = new Dictionary<string, object?>
+			{
+				["comments"] = string.Empty,
+				["action_source"] = "mobile",
+				["action_timestamp"] = DateTime.UtcNow
+			};
+			if (currentStep?.Id > 0)
+			{
+				var sid = currentStep.Id;
+				payload["workflow_step_id"] = sid;
+				payload["step_id"] = sid;
+				payload["approval_workflow_step_id"] = sid;
+			}
+
+			using var content = new StringContent(
+				JsonSerializer.Serialize(payload, WritePayloadOptions),
+				Encoding.UTF8,
+				"application/json");
+
+			using var response = await client.PostAsync($"api/proposals/{proposalId}/approve", content, cancellationToken).ConfigureAwait(false);
 
 			if (response.IsSuccessStatusCode)
 			{
@@ -102,6 +127,44 @@ public sealed class ApprovalService : IApprovalService
 		}
 	}
 
+	/// <summary>Picks the server-marked current step, else the earliest step that looks actionable.</summary>
+	private static ApprovalStep? ResolveCurrentWorkflowStep(IReadOnlyList<ApprovalStep> steps)
+	{
+		if (steps is null || steps.Count == 0)
+		{
+			return null;
+		}
+
+		var flagged = steps.Where(static s => s.IsCurrentStep).OrderBy(static s => s.StepNumber).ToList();
+		if (flagged.Count > 0)
+		{
+			return flagged[0];
+		}
+
+		foreach (var s in steps.OrderBy(static x => x.StepNumber))
+		{
+			if (WorkflowStepStatusLooksActive(s.Status))
+			{
+				return s;
+			}
+		}
+
+		return null;
+	}
+
+	private static bool WorkflowStepStatusLooksActive(string? status)
+	{
+		if (string.IsNullOrWhiteSpace(status))
+		{
+			return false;
+		}
+
+		var key = status.Trim().ToLowerInvariant()
+			.Replace(" ", "_", StringComparison.Ordinal);
+
+		return key is "pending" or "current" or "in_progress" or "active" or "waiting" or "pending_review";
+	}
+
 	public async Task<ApiActionResult> ReturnProposalAsync(int proposalId, string? remarks, CancellationToken cancellationToken = default)
 	{
 		var comments = (remarks ?? string.Empty).Trim();
@@ -113,16 +176,30 @@ public sealed class ApprovalService : IApprovalService
 		try
 		{
 			var client = _httpClientFactory.CreateClient("LaravelApi");
-			using var response = await client.PostAsJsonAsync(
-				$"api/proposals/{proposalId}/return",
-				new
-				{
-					comments,
-					action_source = "mobile",
-					action_timestamp = DateTime.UtcNow
-				},
-				JsonOptions,
-				cancellationToken).ConfigureAwait(false);
+
+			var workflowSteps = await _proposalService.GetProposalWorkflowAsync(proposalId, cancellationToken).ConfigureAwait(false);
+			var currentStep = ResolveCurrentWorkflowStep(workflowSteps);
+
+			var payload = new Dictionary<string, object?>
+			{
+				["comments"] = comments,
+				["action_source"] = "mobile",
+				["action_timestamp"] = DateTime.UtcNow
+			};
+			if (currentStep?.Id > 0)
+			{
+				var sid = currentStep.Id;
+				payload["workflow_step_id"] = sid;
+				payload["step_id"] = sid;
+				payload["approval_workflow_step_id"] = sid;
+			}
+
+			using var content = new StringContent(
+				JsonSerializer.Serialize(payload, WritePayloadOptions),
+				Encoding.UTF8,
+				"application/json");
+
+			using var response = await client.PostAsync($"api/proposals/{proposalId}/return", content, cancellationToken).ConfigureAwait(false);
 
 			if (response.IsSuccessStatusCode)
 			{

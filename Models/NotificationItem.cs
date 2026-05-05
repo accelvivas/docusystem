@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace docusystem.Models;
@@ -10,6 +11,17 @@ public class NotificationItem
 {
 	[JsonPropertyName("id")]
 	public int Id { get; set; }
+
+	/// <summary>Laravel may use UUID strings for notification ids instead of integers.</summary>
+	[JsonIgnore]
+	public string? StringId { get; set; }
+
+	/// <summary>Value for PATCH <c>/api/notifications/{id}/read</c> — prefers <see cref="StringId"/> then numeric <see cref="Id"/>.</summary>
+	[JsonIgnore]
+	public string RouteKeyForApi =>
+		!string.IsNullOrWhiteSpace(StringId)
+			? StringId.Trim()
+			: Id > 0 ? Id.ToString(CultureInfo.InvariantCulture) : string.Empty;
 
 	[JsonPropertyName("proposal_id")]
 	public int ProposalId { get; set; }
@@ -84,7 +96,10 @@ public class NotificationItem
 	public bool? IsReadFlag { get; set; }
 
 	[JsonPropertyName("created_at")]
-	public DateTime DateCreated { get; set; }
+	public DateTime? CreatedAt { get; set; }
+
+	[JsonIgnore]
+	public DateTime DateCreated => CreatedAt ?? default;
 
 	[JsonIgnore]
 	public string? ResolvedLinkUrl => LinkUrl ?? LinkUrlCamel;

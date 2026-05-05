@@ -16,8 +16,8 @@ public interface INotificationService
 	/// <summary>GET notifications (tries <c>api/notifications</c> and common alternates). Laravel scopes to the authenticated user / approver.</summary>
 	Task<IReadOnlyList<NotificationItem>> GetNotificationsAsync(CancellationToken cancellationToken = default);
 
-	/// <summary>PATCH /api/notifications/{id}/read — marks a single notification as read.</summary>
-	Task MarkAsReadAsync(int notificationId, CancellationToken cancellationToken = default);
+	/// <summary>PATCH /api/notifications/{id}/read — marks a single notification as read (numeric id or UUID string).</summary>
+	Task MarkAsReadAsync(string notificationRouteId, CancellationToken cancellationToken = default);
 
 	/// <summary>PATCH /api/notifications/read-all — marks every notification for the user as read.</summary>
 	Task MarkAllAsReadAsync(CancellationToken cancellationToken = default);

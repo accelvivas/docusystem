@@ -2019,7 +2019,53 @@ public partial class ProposalDetailsPage : ContentPage
 				return;
 			}
 
-			await DisplayAlertAsync("Approved", "The proposal moves to the next stage.", "OK");
+			var wasFinalStageLocal = IsCurrentStageLastInWorkflow(_proposal);
+			var refreshedAfter = await _proposalService.GetProposalByIdAsync(_proposal.Id).ConfigureAwait(true);
+			if (refreshedAfter is not null)
+			{
+				refreshedAfter.ApprovalFlowType = ProposalWorkflowService.InferFlowTypeFromProposal(refreshedAfter);
+				refreshedAfter.Status = Proposal.NormalizeStatus(refreshedAfter.Status);
+				_session.SetSelectedProposal(refreshedAfter);
+			}
+
+			var normalized = refreshedAfter is not null
+				? refreshedAfter.Status
+				: Proposal.NormalizeStatus(_proposal.Status);
+
+			var fullyApproved = string.Equals(normalized, "Fully Approved", StringComparison.OrdinalIgnoreCase);
+
+			// HTTP 200 alone does not guarantee the workflow row advanced — warn when server still looks "stuck".
+			var stuckAtFinalSignatory = wasFinalStageLocal &&
+			                            refreshedAfter is not null &&
+			                            !fullyApproved &&
+			                            IsCurrentStageLastInWorkflow(refreshedAfter);
+
+			if (stuckAtFinalSignatory)
+			{
+				await DisplayAlertAsync(
+					"Workflow not updated on server",
+					"The approve request succeeded, but after refreshing, this proposal still shows the final signatory and is not Fully Approved. The web app will look unchanged until the backend fixes advancing the last step (POST approve / workflow assignment). Compare mobile vs web API base URL and check Laravel logs for this proposal.",
+					"OK");
+			}
+			else if (fullyApproved)
+			{
+				await DisplayAlertAsync(
+					"Fully approved",
+					"This proposal completed the approval chain.",
+					"OK");
+			}
+			else if (refreshedAfter is null && wasFinalStageLocal)
+			{
+				await DisplayAlertAsync(
+					"Approved",
+					"Your approval was sent, but the app could not reload the proposal. Open the web app or pending list to confirm the status — it should show Fully Approved if the server processed the final step.",
+					"OK");
+			}
+			else
+			{
+				await DisplayAlertAsync("Approved", "The proposal moves to the next stage.", "OK");
+			}
+
 			await Shell.Current.GoToAsync("//pendingapprovals");
 			return;
 		}
@@ -2067,6 +2113,21 @@ public partial class ProposalDetailsPage : ContentPage
 
 	private bool IsFullyApproved() =>
 		string.Equals(_proposal?.Status, "Fully Approved", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// True when <see cref="Proposal.CurrentStage"/> matches the final signatory for this proposal's flow (Executive Director).
+	/// </summary>
+	private static bool IsCurrentStageLastInWorkflow(Proposal proposal)
+	{
+		var stages = ProposalWorkflowService.GetStages(proposal.ApprovalFlowType);
+		if (stages.Count == 0 || string.IsNullOrWhiteSpace(proposal.CurrentStage))
+		{
+			return false;
+		}
+
+		var last = stages[^1];
+		return ProposalWorkflowService.IsEquivalentRole(proposal.CurrentStage, last);
+	}
 
 	private bool IsReturned() =>
 		string.Equals(_proposal?.Status, "Returned for Revision", StringComparison.OrdinalIgnoreCase);

@@ -37,11 +37,12 @@ public static class ApprovalRules
 			.ToList();
 
 		var rk = user.RoleKey?.Trim().ToLowerInvariant();
+		// Role ids must match roles.id in DB seed — see RoleIdCatalog (Admin = 10, SDAO Staff = 6).
 		var adminLike = distinct.Any(r => string.Equals(r, "Admin", StringComparison.OrdinalIgnoreCase)) ||
-		                rid == 8 ||
+		                rid == 10 ||
 		                rk == "admin";
 		var sdaoLike = distinct.Any(r => string.Equals(r, "SDAO Staff", StringComparison.OrdinalIgnoreCase)) ||
-		               rid == 7 ||
+		               rid == 6 ||
 		               rk == "sdao_staff";
 
 		if (adminLike || sdaoLike)
@@ -83,6 +84,9 @@ public static class ApprovalRules
 				return;
 			case "sdao_staff":
 				roles.Add("SDAO Staff");
+				return;
+			case "assistant_director":
+				roles.Add("Assistant Director");
 				return;
 			case "admin":
 				roles.Add("Admin");
